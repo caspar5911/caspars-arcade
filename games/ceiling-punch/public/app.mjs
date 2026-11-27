@@ -1,6 +1,7 @@
 import { createRun, step, tap, TICK, WIDTH } from './engine.mjs';
 import { drawScene, MIN_HEIGHT } from './render.mjs';
 import * as feel from './feel.mjs';
+import * as lb from './leaderboard.mjs';
 
 const board = document.getElementById('board');
 const strike = document.getElementById('strike');
@@ -10,6 +11,13 @@ const status = document.getElementById('status');
 const overlay = document.getElementById('overlay');
 const soundButton = document.getElementById('sound');
 const fullButton = document.getElementById('full');
+const saveForm = document.getElementById('save');
+const nameInput = document.getElementById('name');
+const saveButton = document.getElementById('saveButton');
+const saveNote = document.getElementById('saveNote');
+const boardPanel = document.getElementById('leaderboard');
+const boardList = document.getElementById('boardList');
+const showBoardButton = document.getElementById('showBoard');
 const context = board.getContext('2d');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const coarse = matchMedia('(pointer: coarse)');
@@ -23,6 +31,14 @@ let previousDirection = run.direction;
 let landedAt = -1e9; // (for the landing squash)
 let warnedFloor = -1; // (the flood warning, once a floor)
 let view = { scale: 1, offset: 0, height: MIN_HEIGHT, ratio: 1 };
+// 🏆 this run, for the leaderboard: its ticket (null: started offline), engine ticks since the start, and the taps
+let currentTicket = null;
+let nextTicket = null;
+let fetchingTicket = false;
+let ticks = 0;
+let taps = [];
+let boardData = null;
+let boardTab = 'week';
 
 function readBest() {
   try {
@@ -78,6 +94,7 @@ function updateInterface() {
       break;
     case 'lost': {
       strike.textContent = 'Try again';
+      offerSave();
       const record = run.floor > 0 && run.floor >= best ? ' New best!' : '';
       status.textContent = (run.impact.reason === 'flooded' ? `Splash! The flood caught you on floor ${run.floor}.`
         : run.impact.reason === 'early' ? `Too early: solid concrete before the crack. Floor ${run.floor}.`
@@ -91,14 +108,139 @@ function updateInterface() {
 function takeInput() {
   feel.unlock(); // (sound is only allowed after a tap)
   if (run.phase === 'ready' && coarse.matches) goFullScreen(); // (on a phone, the first start fills the screen)
-  if (tap(run)) updateInterface();
+  const before = run.phase;
+  if (before === 'running') taps.push(ticks); // (a punch, after this many engine ticks: the server replays it)
+  if (!tap(run)) return;
+  if (before === 'ready' || before === 'lost') startRun();
+  updateInterface();
 }
+
+/** A new run: its tower comes from the server's ticket when there is one (so it can go on the board). */
+function startRun() {
+  currentTicket = nextTicket;
+  nextTicket = null;
+  if (currentTicket) run.seed = currentTicket.seed >>> 0; // (before any step: the tower is made from the seed)
+  ticks = 0;
+  taps = [];
+  saveForm.hidden = true;
+  boardPanel.hidden = true;
+  showNote('');
+  refillTicket();
+}
+
+function refillTicket() {
+  if (nextTicket || fetchingTicket || !lb.available()) return;
+  fetchingTicket = true;
+  lb.ticket().then(t => {
+    nextTicket = t;
+  }).finally(() => {
+    fetchingTicket = false;
+  });
+}
+
+function showNote(text, bad = false) {
+  saveNote.textContent = text;
+  saveNote.dataset.bad = String(bad);
+}
+
+/** After a run: offer to save it (or say why it can't be). */
+function offerSave() {
+  boardPanel.hidden = true;
+  if (!lb.available()) return;
+  showBoardButton.hidden = false;
+  if (run.floor <= 0) {
+    saveForm.hidden = true;
+    return;
+  }
+  if (!currentTicket) {
+    saveForm.hidden = true;
+    showNote("This run started while the leaderboard was offline, so it can't be saved.", true);
+    return;
+  }
+  saveForm.hidden = false;
+  saveButton.disabled = false;
+  if (!nameInput.value) nameInput.value = lb.savedName();
+}
+
+saveForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const name = nameInput.value.trim();
+  if (name.length < 2) {
+    showNote('Type a name (2 to 16 letters or numbers).', true);
+    nameInput.focus();
+    return;
+  }
+  if (!currentTicket || run.phase !== 'lost') return;
+  saveButton.disabled = true;
+  showNote('Saving…');
+  try {
+    const board = await lb.save({ ticket: currentTicket.ticket, seed: currentTicket.seed, taps, floor: run.floor, name });
+    lb.rememberName(board.name ?? name);
+    nameInput.value = board.name ?? name;
+    currentTicket = null; // (saved once)
+    saveForm.hidden = true;
+    const mine = (board.week ?? []).find(x => x.you);
+    showNote(mine ? `Saved! You're #${mine.place} this week.` : 'Saved! Keep climbing to reach the top 10.');
+    showBoard(board, 'week');
+  } catch (error) {
+    saveButton.disabled = false;
+    showNote(error.message, true);
+  }
+});
+
+function showBoard(board, tab = boardTab) {
+  boardData = board;
+  boardTab = tab;
+  boardPanel.hidden = false;
+  for (const b of boardPanel.querySelectorAll('[data-tab]')) b.setAttribute('aria-pressed', String(b.dataset.tab === tab));
+  const rows = board[tab] ?? [];
+  boardList.replaceChildren();
+  if (!rows.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = tab === 'week' ? 'No one yet this week: be the first!' : 'No scores yet: be the first!';
+    boardList.append(li);
+    return;
+  }
+  for (const row of rows) {
+    const li = document.createElement('li');
+    if (row.you) li.dataset.you = 'true';
+    for (const [cls, text] of [['place', row.place + '.'], ['who', row.name], ['floor', 'Floor ' + row.floor]]) {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text; // (names are shown as text, never as page code)
+      li.append(span);
+    }
+    boardList.append(li);
+  }
+}
+
+for (const b of boardPanel.querySelectorAll('[data-tab]')) {
+  b.addEventListener('click', () => boardData && showBoard(boardData, b.dataset.tab));
+}
+
+showBoardButton.addEventListener('click', async () => {
+  showBoardButton.disabled = true;
+  try {
+    showBoard(await lb.top(lb.savedName()));
+  } catch (error) {
+    showNote(error.message, true);
+  } finally {
+    showBoardButton.disabled = false;
+  }
+});
+
+lb.connect().then(ok => {
+  showBoardButton.hidden = !ok;
+  if (ok) refillTicket();
+});
 
 // tap anywhere: the game, the start card, the button
 for (const surface of [board, overlay]) {
   surface.addEventListener('pointerdown', event => {
     if (!event.isPrimary || event.button !== 0) return;
     if (event.target.closest?.('a, .icon')) return;
+    if (event.target.closest?.('.card') && !event.target.closest('#strike')) return; // (the name box, the board)
     event.preventDefault();
     takeInput();
   });
@@ -107,7 +249,7 @@ strike.addEventListener('click', event => {
   if (event.detail === 0) takeInput(); // (a keyboard press on the button)
 });
 window.addEventListener('keydown', event => {
-  if (event.code !== 'Space' || event.target.closest?.('a, input, textarea, .icon') ||
+  if (event.code !== 'Space' || event.target.closest?.('a, input, textarea, .icon, form, #leaderboard, .link') ||
       event.ctrlKey || event.altKey || event.metaKey) return;
   event.preventDefault();
   if (!event.repeat) takeInput();
@@ -167,6 +309,7 @@ function frame(time) {
   if (!document.hidden) {
     availableTime += elapsed;
     while (availableTime >= TICK) {
+      if (run.phase === 'running' || run.phase === 'smash') ticks++;
       step(run);
       availableTime -= TICK;
     }

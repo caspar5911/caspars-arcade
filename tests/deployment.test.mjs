@@ -68,3 +68,20 @@ test('the Pages artifact contains a hub and a versioned RuleReaper game', async 
     assert.ok((await readFile(join(punch, asset))).length > 0, asset);
   }
 });
+
+test('the leaderboard server comes from the build, never the repo', async t => {
+  const output = await mkdtemp(join(tmpdir(), 'arcade-build-'));
+  t.after(() => rm(output, { recursive: true }));
+  const env = { ...process.env, ARCADE_SERVER: 'https://scores.example.com/' };
+  let result = spawnSync(process.execPath, ['scripts/build-pages.mjs', '7', output], { encoding: 'utf8', env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(await readFile(join(output, 'arcade-config.json'), 'utf8')), { server: 'https://scores.example.com' });
+  const plain = { ...process.env };
+  delete plain.ARCADE_SERVER;
+  result = spawnSync(process.execPath, ['scripts/build-pages.mjs', '8', output], { encoding: 'utf8', env: plain });
+  assert.equal(result.status, 0, result.stderr);
+  await assert.rejects(readFile(join(output, 'arcade-config.json')), 'no server, no config');
+  result = spawnSync(process.execPath, ['scripts/build-pages.mjs', '9', output],
+    { encoding: 'utf8', env: { ...plain, ARCADE_SERVER: 'http://insecure.example.com' } });
+  assert.notEqual(result.status, 0, 'only https');
+});

@@ -25,7 +25,23 @@
     <div class="card">
       <h1>Ceiling <em>Punch</em></h1>
       <p id="status" role="status">The robot never stops. Punch through a crack before the flood catches you.</p>
+      <form id="save" hidden>
+        <label for="name">Your name for the leaderboard</label>
+        <div class="row">
+          <input id="name" name="name" maxlength="16" autocomplete="nickname" enterkeyhint="done" placeholder="Name" spellcheck="false">
+          <button id="saveButton" type="submit">Save</button>
+        </div>
+      </form>
+      <p id="saveNote" class="note" role="status"></p>
+      <section id="leaderboard" hidden aria-label="Leaderboard">
+        <div class="tabs" role="group" aria-label="Which leaderboard">
+          <button type="button" data-tab="week" aria-pressed="true">This week</button>
+          <button type="button" data-tab="all" aria-pressed="false">All time</button>
+        </div>
+        <ol id="boardList"></ol>
+      </section>
       <button id="strike" type="button" aria-describedby="help">Start</button>
+      <button id="showBoard" class="link" type="button" hidden>🏆 Leaderboard</button>
       <p id="help">Tap anywhere (or press Space) to punch. Green is a crack, gold breaks two floors, grey concrete ends the run.</p>
     </div>
   </section>
