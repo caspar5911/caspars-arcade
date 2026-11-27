@@ -87,3 +87,36 @@ Going for gold is a fair gamble, not a trap. Experts are mostly stopped by the f
   - there were no console errors.
 
 **Remaining risk** is the real feel on a phone (tap latency, how hard the flood feels), which needs a playtest with people.
+
+## Full screen, sound and vibration (2026-11-27)
+
+Playtest feedback: the game felt like a small rectangle, with no sound or sensation.
+
+**Full screen**
+- The tower fills the whole screen. A phone gets the full width and as many floors as fit. A wide screen gets the full height, centred.
+- The first start on a touch device asks for browser full screen where it is allowed, and a button toggles it.
+- Floor, best, back, sound and full-screen controls sit in a slim top bar. The start and try-again card lays over the game, and a tap anywhere punches.
+
+**Sound (`feel.mjs`)**
+- All sounds are made with Web Audio, with no files to download: punch thud and crunch, double crunch and rising chime, a clang on concrete, a splash, a flood warning beep, a soft wall tick and a start chirp.
+- Sound starts on the first tap, as browsers require. Mute is remembered in localStorage.
+
+**Vibration** uses `navigator.vibrate` where the phone allows it (Android, not iPhone): a short buzz on a smash, a double buzz on gold, a jolt on a miss, and a long pattern on a splash.
+
+**Sensation**
+- Stronger screen shake and a white flash on impact.
+- Bigger debris on a double.
+- A pulsing red glow at the edges when the flood is close.
+- A landing squash, a gold shimmer, and bubbles in the water.
+- Shake, flash, squash and waves are off under reduced motion.
+
+**Verified**
+- `node --test` passes.
+- In headless Chromium at phone size (390×844, touch) and laptop size (1280×720):
+  - the canvas fills the viewport;
+  - a real tap starts the run;
+  - every sound plays without errors, and the buzz patterns are requested;
+  - a scripted player climbs and then the flood ends the run with the try-again card;
+  - there are no console errors.
+
+The audio itself was not listened to, and vibration needs a real Android phone.

@@ -1,10 +1,15 @@
 import { ceilingAt, doubleWindows, SMASH_SECONDS, WIDTH } from './engine.mjs';
 
-export const HEIGHT = 348;
-const FLOOR_H = 104; // from one floor to the next
+// The tower is always WIDTH (416) units wide; its height follows the screen (full screen on a phone).
+export const MIN_HEIGHT = 520;
 const SLAB = 20; // a ceiling's thickness
-const BASE = 292; // where the robot stands on screen
 const HOLE = 44; // a broken hole's width
+
+/** Floor spacing and where the robot stands, for a screen this tall (in tower units). */
+export function layout(height) {
+  const floorH = Math.round(Math.max(104, Math.min(150, height / 5.4)));
+  return { height, floorH, base: Math.round(height * .74) };
+}
 
 function block(ctx, x, y, width, height, color) {
   ctx.fillStyle = color;
@@ -22,37 +27,37 @@ function levels(run) {
   return { robot: from + cleared * easeOut(p), cam: from + cleared * easeInOut(p), progress: p };
 }
 
-function backdrop(ctx, cam) {
-  const background = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+function backdrop(ctx, cam, L) {
+  const background = ctx.createLinearGradient(0, 0, 0, L.height);
   background.addColorStop(0, '#303d4b');
   background.addColorStop(1, '#1c2532');
   ctx.fillStyle = background;
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillRect(0, 0, WIDTH, L.height);
   // the grid drifts down as you climb (a slower layer behind the floors)
-  const drift = (cam * FLOOR_H * .45) % 24;
+  const drift = (cam * L.floorH * .45) % 24;
   ctx.strokeStyle = '#bdcde614';
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = 16; x < WIDTH; x += 24) {
     ctx.moveTo(x, 0);
-    ctx.lineTo(x, HEIGHT);
+    ctx.lineTo(x, L.height);
   }
-  for (let y = drift - 24; y < HEIGHT; y += 24) {
+  for (let y = drift - 24; y < L.height; y += 24) {
     ctx.moveTo(0, y);
     ctx.lineTo(WIDTH, y);
   }
   ctx.stroke();
 }
 
-function walls(ctx) {
+function walls(ctx, L) {
   for (const x of [0, WIDTH - 16]) {
-    block(ctx, x, 0, 16, HEIGHT, '#222631');
-    block(ctx, x + 7, 0, 2, HEIGHT, '#7a8291');
+    block(ctx, x, 0, 16, L.height, '#222631');
+    block(ctx, x + 7, 0, 2, L.height, '#7a8291');
   }
 }
 
 /** Slab k (its top surface at y): the ground for k = 0, else the ceiling above floor k - 1, with its cracks. */
-function drawSlab(ctx, run, k, y, gold, holes) {
+function drawSlab(ctx, run, k, y, gold, holes, glow) {
   ctx.save();
   ctx.beginPath();
   // (broken holes are cut out of the slab)
@@ -85,8 +90,10 @@ function drawSlab(ctx, run, k, y, gold, holes) {
       ctx.stroke();
     }
     for (const [left, right] of gold) {
+      ctx.globalAlpha = .75 + .25 * glow; // (the gold spot shimmers)
       block(ctx, left, y, right - left, 4, '#ffc46c');
       block(ctx, left, y + SLAB - 1, right - left, 3, '#ffc46c');
+      ctx.globalAlpha = 1;
     }
   }
   ctx.restore();
@@ -111,10 +118,16 @@ function guide(ctx, x, top, bottom) {
   ctx.restore();
 }
 
-function drawRobot(ctx, x, y, direction, punch, running) {
+function drawRobot(ctx, x, y, direction, punch, running, squash) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(direction, 1);
+  if (squash) {
+    // (a little squash on landing, from the feet)
+    ctx.translate(0, 20);
+    ctx.transform(1 + squash * .25, 0, 0, 1 - squash * .25, 0, 0);
+    ctx.translate(0, -20);
+  }
   const stride = running ? Math.sin(x / 4.8) * 5 : 0;
   block(ctx, -16, -6, 30, 26, '#121a22');
   block(ctx, -14, -5, 27, 21, '#f7a748');
@@ -134,18 +147,20 @@ function drawRobot(ctx, x, y, direction, punch, running) {
   ctx.restore();
 }
 
-function burst(ctx, x, top, progress, reduced) {
+function burst(ctx, x, top, progress, reduced, big) {
   if (reduced) {
     block(ctx, x - 14, top - 1, 28, 4, '#ffd68c');
     return;
   }
-  for (let bit = 0; bit < 12; bit++) {
+  const bits = big ? 20 : 13;
+  for (let bit = 0; bit < bits; bit++) {
     const side = bit % 2 === 0 ? -1 : 1;
-    const distance = (14 + bit * 7) * progress;
+    const spread = 1 + (bit % 5) * .35;
+    const distance = (12 + bit * 6) * progress * spread;
     const bx = x + side * distance;
-    const by = top + 10 - (8 + bit * 5) * progress + 60 * progress ** 2;
-    const size = 3 + bit % 4;
-    block(ctx, bx, by, size, size, bit % 3 === 0 ? '#ffc973' : '#d5dde1');
+    const by = top + 10 - (10 + bit * 5) * progress + 80 * progress ** 2;
+    const size = 3 + bit % 5;
+    block(ctx, bx, by, size, size, bit % 3 === 0 ? '#ffc973' : bit % 3 === 1 ? '#d5dde1' : '#9aa3ae');
   }
 }
 
@@ -161,21 +176,30 @@ function drawMiss(ctx, x, y) {
   ctx.stroke();
 }
 
-function drawFlood(ctx, surface, time, reduced, danger) {
-  if (surface >= HEIGHT) return;
+function drawFlood(ctx, surface, time, reduced, danger, L) {
+  if (surface >= L.height) return;
   const top = Math.max(-10, surface);
   ctx.save();
-  ctx.fillStyle = danger ? '#2f8fd2d0' : '#2a7fc0b8';
+  ctx.fillStyle = danger ? '#2f8fd2d8' : '#2a7fc0b8';
   ctx.beginPath();
-  ctx.moveTo(16, HEIGHT);
+  ctx.moveTo(16, L.height);
   for (let x = 16; x <= WIDTH - 16; x += 8) {
-    const wave = reduced ? 0 : Math.sin(x / 22 + time * 4) * 3;
+    const wave = reduced ? 0 : Math.sin(x / 22 + time * 4) * 3 + Math.sin(x / 9 - time * 6) * 1.2;
     ctx.lineTo(x, top + wave);
   }
-  ctx.lineTo(WIDTH - 16, HEIGHT);
+  ctx.lineTo(WIDTH - 16, L.height);
   ctx.closePath();
   ctx.fill();
   block(ctx, 16, top - 1, WIDTH - 32, 2, '#bfe6ff90');
+  // bubbles
+  if (!reduced) {
+    for (let i = 0; i < 10; i++) {
+      const bx = 30 + ((i * 97) % (WIDTH - 60));
+      const rise = (time * (18 + i * 3) + i * 40) % 120;
+      const by = top + 20 + 120 - rise;
+      if (by > top + 6 && by < L.height) block(ctx, bx, by, 3, 3, '#cfeeff70');
+    }
+  }
   ctx.restore();
 }
 
@@ -186,60 +210,63 @@ function flash(ctx, text, progress) {
   ctx.font = '900 20px system-ui';
   ctx.fillStyle = '#10161fcc';
   ctx.beginPath();
-  ctx.roundRect(WIDTH / 2 - 70, 8, 140, 30, 10);
+  ctx.roundRect(WIDTH / 2 - 70, 58, 140, 30, 10);
   ctx.fill();
   ctx.fillStyle = '#ffc46c';
-  ctx.fillText(text, WIDTH / 2, 30);
+  ctx.fillText(text, WIDTH / 2, 80);
   ctx.restore();
 }
 
-function banner(ctx, text, sub, color) {
-  ctx.save();
-  ctx.fillStyle = '#10161fcc';
-  ctx.beginPath();
-  ctx.roundRect(WIDTH / 2 - 150, 84, 300, sub ? 74 : 50, 14);
-  ctx.fill();
-  ctx.textAlign = 'center';
-  ctx.fillStyle = color;
-  ctx.font = '900 32px system-ui';
-  ctx.fillText(text, WIDTH / 2, 120);
-  if (sub) {
-    ctx.font = '600 15px system-ui';
-    ctx.fillStyle = '#e6f2ef';
-    ctx.fillText(sub, WIDTH / 2, 146);
-  }
-  ctx.restore();
-}
-
-/** Draw the tower around the robot. `time` (seconds) only moves the water. */
-export function drawScene(ctx, run, reducedMotion = false, time = 0) {
+/**
+ * Draw the tower around the robot, `height` tower units tall. `time` (seconds) moves the water and the shimmer;
+ * `landed` (seconds since the last landing) squashes the robot a little.
+ */
+export function drawScene(ctx, run, { reducedMotion = false, time = 0, height = MIN_HEIGHT, landed = 9 } = {}) {
+  const L = layout(height);
   const { robot, cam, progress } = levels(run);
   const smashing = run.phase === 'smash';
-  const shake = smashing && !reducedMotion && progress < .35 ? (1 - progress / .35) * (run.impact.cleared === 2 ? 5 : 3) : 0;
+  const double = smashing && run.impact.cleared === 2;
+  const shake = smashing && !reducedMotion && progress < .4 ? (1 - progress / .4) * (double ? 8 : 5) : 0;
   ctx.save();
   if (shake) ctx.translate(Math.sin(progress * 90) * shake, Math.cos(progress * 70) * shake * .6);
-  backdrop(ctx, cam);
-  const slabY = k => BASE - (k - cam) * FLOOR_H; // a slab's top surface on screen
+  backdrop(ctx, cam, L);
+  const slabY = k => L.base - (k - cam) * L.floorH; // a slab's top surface on screen
   const gold = doubleWindows(run.seed, run.floor);
-  for (let k = Math.max(0, Math.floor(cam) - 1); k <= Math.floor(cam) + 4; k++) {
+  const glow = reducedMotion ? 1 : .5 + .5 * Math.sin(time * 7);
+  const lowest = Math.max(0, Math.floor(cam - (L.height - L.base) / L.floorH) - 1);
+  for (let k = lowest; k <= Math.floor(cam + L.base / L.floorH) + 2; k++) {
     const y = slabY(k);
-    if (y > HEIGHT + 4 || y < -SLAB - 4) continue;
+    if (y > L.height + 4 || y < -SLAB - 4) continue;
     const showGold = run.phase !== 'lost' && (k === run.floor + 1 || k === run.floor + 2);
-    drawSlab(ctx, run, k, y, showGold ? gold : [], run.holes.filter(h => h.slab === k));
+    drawSlab(ctx, run, k, y, showGold ? gold : [], run.holes.filter(h => h.slab === k), glow);
   }
-  if (run.phase === 'ready' || run.phase === 'running') guide(ctx, run.x, slabY(run.floor + 1) + SLAB + 2, BASE - 30);
-  if (smashing) burst(ctx, run.impact.x, slabY(run.impact.from + 1), progress, reducedMotion);
-  const robotY = BASE - 23 - (robot - cam) * FLOOR_H;
-  drawRobot(ctx, run.x, robotY, run.direction, smashing && progress < .7, run.phase === 'running');
-  const close = run.floor - run.flood < .7;
-  drawFlood(ctx, slabY(run.flood), time, reducedMotion, close && run.phase === 'running');
-  walls(ctx);
+  if (run.phase === 'ready' || run.phase === 'running') guide(ctx, run.x, slabY(run.floor + 1) + SLAB + 2, L.base - 30);
+  if (smashing) burst(ctx, run.impact.x, slabY(run.impact.from + 1), progress, reducedMotion, double);
+  const robotY = L.base - 23 - (robot - cam) * L.floorH;
+  const squash = !reducedMotion && run.phase === 'running' && landed < .14 ? 1 - landed / .14 : 0;
+  drawRobot(ctx, run.x, robotY, run.direction, smashing && progress < .7, run.phase === 'running', squash);
+  const close = run.floor - run.flood;
+  drawFlood(ctx, slabY(run.flood), time, reducedMotion, close < .7 && run.phase === 'running', L);
+  walls(ctx, L);
   ctx.restore();
 
-  if (smashing && run.impact.cleared === 2) flash(ctx, 'DOUBLE! ×2', progress); // (small, at the top: the next ceilings stay clear)
-  if (run.phase === 'ready') banner(ctx, 'TAP TO PUNCH', 'Climb before the flood catches you', '#ffc46c');
-  if (run.phase === 'lost') {
-    if (run.impact.reason === 'flooded') banner(ctx, 'SPLASH!', 'Floor ' + run.floor, '#9fd8ff');
-    else drawMiss(ctx, run.impact.x, slabY(run.floor + 1) + SLAB / 2);
+  // a white flash on impact
+  if (smashing && !reducedMotion && progress < .25) {
+    ctx.save();
+    ctx.globalAlpha = (1 - progress / .25) * (double ? .35 : .2);
+    block(ctx, 0, 0, WIDTH, L.height, '#ffffff');
+    ctx.restore();
   }
+  // the flood is close: the edges glow red, pulsing
+  if (run.phase === 'running' && close < 1) {
+    const pulse = reducedMotion ? .5 : .5 + .5 * Math.sin(time * 12);
+    const strength = (1 - close) * (.35 + .25 * pulse);
+    const g = ctx.createRadialGradient(WIDTH / 2, L.height / 2, L.height * .25, WIDTH / 2, L.height / 2, L.height * .75);
+    g.addColorStop(0, '#ff3b3000');
+    g.addColorStop(1, `rgba(255, 59, 48, ${strength.toFixed(3)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, WIDTH, L.height);
+  }
+  if (double) flash(ctx, 'DOUBLE! ×2', progress); // (small, near the top: the next ceilings stay clear)
+  if (run.phase === 'lost' && run.impact.reason !== 'flooded') drawMiss(ctx, run.impact.x, slabY(run.floor + 1) + SLAB / 2);
 }
