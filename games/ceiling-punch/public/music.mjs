@@ -23,7 +23,8 @@ export function dangerFrom(gap, gapMax = 2.4) {
   return Math.min(1, Math.max(0, 1 - gap / gapMax));
 }
 
-export function tempo(danger, floor) {
+export function tempo(danger, floor, calm = false) {
+  if (calm) return 84; // (the start and game-over screens: a calm, uneasy loop)
   return 100 + 52 * danger + Math.min(18, floor * .4); // beats per minute
 }
 
@@ -46,10 +47,12 @@ function envelope(audio, t, peak, attack, release) {
 }
 
 /** One eighth note of music at audio time t (also used to render it offline, for the checks). */
-export function scheduleStep(audio, out, t, step, danger, floor = 0) {
+export function scheduleStep(audio, out, t, step, danger, floor = 0, calm = false) {
   const bar = Math.floor(step / STEPS) % ROOTS.length;
   const s = step % STEPS;
-  const beat = 60 / tempo(danger, floor);
+  const beat = 60 / tempo(danger, floor, calm);
+  const soft = calm ? .6 : 1; // (calmer and quieter between runs)
+  if (calm) danger = 0;
   const eighth = beat / 2;
 
   // bass: a driving eighth-note ostinato, the octave on the off-beats; brighter and grittier with danger. It sits an
@@ -62,14 +65,14 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
   lp.type = 'lowpass';
   lp.frequency.setValueAtTime(800 + 2400 * danger ** 1.2, t);
   lp.Q.value = 3 + 6 * danger;
-  const bassGain = envelope(audio, t, .17 + .06 * danger, .006, eighth * .8);
+  const bassGain = envelope(audio, t, soft * (.3 + .08 * danger), .006, eighth * .8);
   bass.connect(lp).connect(bassGain).connect(out);
   bass.start(t);
   bass.stop(t + eighth + .05);
   const sub = audio.createOscillator();
   sub.type = 'sine';
   sub.frequency.setValueAtTime(hz(root - 12), t);
-  const subGain = envelope(audio, t, .09, .01, eighth * .8);
+  const subGain = envelope(audio, t, soft * .14, .01, eighth * .8);
   sub.connect(subGain).connect(out);
   sub.start(t);
   sub.stop(t + eighth + .05);
@@ -82,20 +85,20 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
   pf.type = 'lowpass';
   pf.frequency.setValueAtTime(1800 + 2500 * danger, t);
   pf.frequency.exponentialRampToValueAtTime(600, t + eighth * .7);
-  const pg = envelope(audio, t, .075 + .03 * danger, .004, eighth * .65);
+  const pg = envelope(audio, t, soft * (.16 + .05 * danger), .004, eighth * .65);
   pluck.connect(pf).connect(pg).connect(out);
   pluck.start(t);
   pluck.stop(t + eighth);
 
   // heartbeat: "lub-dub" on beats 1 and 3; doubled when the water is close
-  const beats = danger > .6 ? [0, 2, 4, 6] : [0, 4];
+  const beats = calm ? [] : danger > .6 ? [0, 2, 4, 6] : [0, 4];
   if (beats.includes(s)) {
     for (const [offset, peak] of [[0, .55], [.13, .32]]) {
       const k = audio.createOscillator();
       k.type = 'sine';
       k.frequency.setValueAtTime(170, t + offset);
       k.frequency.exponentialRampToValueAtTime(45, t + offset + .14);
-      const g = envelope(audio, t + offset, peak * (.7 + .5 * danger), .004, .16);
+      const g = envelope(audio, t + offset, peak * 1.3 * (.7 + .5 * danger), .004, .16);
       k.connect(g).connect(out);
       k.start(t + offset);
       k.stop(t + offset + .2);
@@ -106,7 +109,7 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
       tf.type = 'bandpass';
       tf.frequency.value = 700;
       tf.Q.value = 1.4;
-      const tg = envelope(audio, t + offset, peak * .75 * (.7 + .5 * danger), .002, .05);
+      const tg = envelope(audio, t + offset, peak * 1.1 * (.7 + .5 * danger), .002, .05);
       tuk.connect(tf).connect(tg).connect(out);
       tuk.start(t + offset, Math.random() * .3);
       tuk.stop(t + offset + .07);
@@ -114,7 +117,7 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
   }
 
   // ticking: sixteenth-note hi-hats, coming in as the water rises (a clock running out)
-  if (danger > .15) {
+  if (!calm && danger > .15) {
     const level = (danger - .15) / .85;
     for (const half of [0, 1]) {
       const at = t + half * eighth / 2;
@@ -123,7 +126,7 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
       const hp = audio.createBiquadFilter();
       hp.type = 'highpass';
       hp.frequency.value = 7000;
-      const g = envelope(audio, at, (half ? .03 : .055) * level, .002, .04);
+      const g = envelope(audio, at, (half ? .05 : .09) * level, .002, .04);
       src.connect(hp).connect(g).connect(out);
       src.start(at, Math.random() * .3);
       src.stop(at + .06);
@@ -145,7 +148,7 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
       f.frequency.value = 900 + 2200 * level;
       const g = audio.createGain();
       g.gain.setValueAtTime(.0001, t);
-      g.gain.linearRampToValueAtTime(.05 * level, t + len * .6);
+      g.gain.linearRampToValueAtTime(.08 * level, t + len * .6);
       g.gain.linearRampToValueAtTime(.0001, t + len);
       o.connect(f).connect(g).connect(out);
       o.start(t);
@@ -161,7 +164,7 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
     const f = audio.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = 3000;
-    const g = envelope(audio, t, .035 * (danger - .8) / .2 + .01, .005, eighth * .7);
+    const g = envelope(audio, t, .06 * (danger - .8) / .2 + .015, .005, eighth * .7);
     a.connect(f).connect(g).connect(out);
     a.start(t);
     a.stop(t + eighth);
@@ -169,18 +172,37 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
   return eighth;
 }
 
-/** Start the music (after a tap: sound must be unlocked). `output` is feel.output(). */
-export function start(output) {
+/**
+ * Start the music (after a tap: sound must be unlocked). `output` is feel.output(). `calm`: the gentler loop for the
+ * start and game-over screens (the chase takes over with setCalm(false)).
+ */
+export function start(output, calm = false) {
   if (!output) return;
   stop(true);
   const { audio, out } = output;
+  // a limiter on the music: loud on a phone speaker, never distorting
+  const limiter = audio.createDynamicsCompressor();
+  limiter.threshold.value = -16;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 6;
+  limiter.attack.value = .003;
+  limiter.release.value = .2;
   const bus = audio.createGain();
   bus.gain.setValueAtTime(.0001, audio.currentTime);
-  bus.gain.exponentialRampToValueAtTime(.75, audio.currentTime + .6); // (a quick fade in)
-  bus.connect(out);
-  state = { audio, out, bus, nextTime: audio.currentTime + .08, step: 0, danger: 0, floor: 0 };
+  bus.gain.exponentialRampToValueAtTime(1, audio.currentTime + .6); // (a quick fade in)
+  bus.connect(limiter).connect(out);
+  state = { audio, out, bus, limiter, nextTime: audio.currentTime + .08, step: 0, danger: 0, floor: 0, calm };
   state.timer = setInterval(pump, 25);
   pump();
+}
+
+/** Switch between the calm loop and the chase (it carries on in time, no restart). */
+export function setCalm(calm) {
+  if (state) state.calm = calm;
+}
+
+export function isCalm() {
+  return state?.calm ?? false;
 }
 
 /** Keep about 0.15 s of music scheduled ahead (steady timing even if a frame is slow). */
@@ -193,7 +215,7 @@ function pump() {
   }
   if (state.nextTime < audio.currentTime) state.nextTime = audio.currentTime + .02; // (fell behind: catch up)
   while (state.nextTime < audio.currentTime + .15) {
-    state.nextTime += scheduleStep(audio, state.bus, state.nextTime, state.step++, state.danger, state.floor);
+    state.nextTime += scheduleStep(audio, state.bus, state.nextTime, state.step++, state.danger, state.floor, state.calm);
   }
 }
 
@@ -207,14 +229,17 @@ export function update(danger, floor) {
 /** Stop: a quick fade, or (caught by the water) a falling whoosh. */
 export function stop(quick = false, caught = false) {
   if (!state) return;
-  const { audio, out, bus, timer } = state;
+  const { audio, out, bus, limiter, timer } = state;
   state = null;
   clearInterval(timer);
   const t = audio.currentTime;
   bus.gain.cancelScheduledValues(t);
   bus.gain.setValueAtTime(Math.max(.0001, bus.gain.value), t);
   bus.gain.exponentialRampToValueAtTime(.0001, t + (quick ? .08 : .9));
-  setTimeout(() => bus.disconnect(), 1200);
+  setTimeout(() => {
+    bus.disconnect();
+    limiter.disconnect();
+  }, 1200);
   if (!caught || quick) return;
   // the music sinks under the water (straight to the main output, not the fading music)
   const o = audio.createOscillator();
