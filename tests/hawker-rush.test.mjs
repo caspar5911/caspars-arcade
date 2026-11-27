@@ -5,6 +5,7 @@ import {
   DISHES, INGREDIENTS, STATIONS, UPGRADES, DECOR, menuFor, newOn, kitchenFor, schedule,
   goals, starsFor, createShift, dishOf, couldBe, placeBase, addIngredient, cook, binBurnt,
   binDish, serve, servingFor, step, progress, speedTime, act, replay, daily, dayKey, speedRun, upgradeCost,
+  WAVES, canCall, callNext, CALL_AHEAD, EARLY_BONUS, seatsFor, prepFor,
 } from '../games/hawker-rush/public/engine.mjs';
 
 function advance(s, seconds) {
@@ -200,6 +201,85 @@ test('daily uses Singapore dates and standard stall; shop prices increase and ca
   assert.ok(Object.values(DECOR).every(d => d.cost > 0));
 });
 
+test('a shift comes in waves: busier in the lunch and dinner rushes, someone waiting at opening', () => {
+  for (const day of [5, 8, 12]) {
+    const people = schedule({ day, seed: 'waves' });
+    const inWave = name => {
+      const k = WAVES.findIndex(w => w[2] === name);
+      return people.filter(p => p.at >= WAVES[k][0] && p.at < WAVES[k + 1][0]).length / (WAVES[k + 1][0] - WAVES[k][0]);
+    };
+    assert.equal(people[0].at, 1.5);
+    assert.ok(inWave('lunch') > 1.8 * inWave('breather'), `day ${day}: the lunch rush is busier`);
+    assert.ok(inWave('dinner') > 1.5 * inWave('open'), `day ${day}: the dinner rush is busier`);
+    assert.ok(people.every((p, i) => i === 0 || p.at >= people[i - 1].at), 'in arrival order');
+    assert.ok(people.every(p => p.at <= SHIFT - 20));
+  }
+  const s = createShift({ day: 8, seed: 'waves' });
+  const waves = [];
+  while (s.phase === 'running') {
+    step(s);
+    for (const e of s.events) if (e.type === 'wave') waves.push(e.wave);
+    s.events.length = 0;
+  }
+  assert.deepEqual(waves, ['lunch', 'breather', 'dinner', 'closing']);
+});
+
+test('the bell calls in the next customer early (they tip more), only when there is room and they are due soon', () => {
+  const s = createShift({ day: 3, seed: 'bell' });
+  advance(s, 2);
+  assert.equal(s.seats.filter(Boolean).length, 1);
+  const next = s.arrivals[s.next];
+  assert.equal(canCall(s), next.at <= s.t + CALL_AHEAD);
+  if (!canCall(s)) advance(s, next.at - CALL_AHEAD - s.t + .1);
+  assert.ok(canCall(s));
+  const before = s.next;
+  assert.equal(act(s, 'call', 0), true);
+  assert.equal(s.next, before + 1);
+  assert.equal(s.called, 1);
+  assert.equal(s.seats.find(c => c && c.id === next.id).called, true);
+  assert.equal(act(s, 'call', 1), false, 'only the plain bell action');
+  // (no bell in a speed run)
+  const speed = createShift(speedRun(new Date('2026-11-30T12:00:00Z')).spec);
+  assert.equal(canCall(speed), false);
+  assert.equal(callNext(speed), false);
+});
+
+test('serving everyone closes the stall early, with a bonus for the time left (less if some left unhappy)', () => {
+  const s = createShift({ day: 1, seed: 'early' });
+  for (let guard = 0; s.phase === 'running' && guard < 20000; guard++) {
+    const c = s.seats.findIndex(x => x && !x.leaving);
+    if (c >= 0 && !s.prep.some(Boolean)) {
+      for (const d of s.seats[c].order) {
+        act(s, 'base', DISHES[d].base, -1);
+        for (const i of DISHES[d].has) act(s, 'add', i, -1);
+        act(s, 'serve', s.prep.findIndex(Boolean), c);
+      }
+    } else if (canCall(s)) act(s, 'call', 0);
+    step(s);
+  }
+  assert.equal(s.phase, 'over');
+  assert.equal(s.lost + s.passed, 0);
+  assert.ok(s.early > 10, `closed ${s.early} s early`);
+  assert.equal(s.earlyBonus, Math.round(s.early * EARLY_BONUS * 100) / 100);
+  assert.ok(s.events.some(e => e.type === 'closed-early'));
+  // nobody served: no bonus, whenever it ends
+  const idle = createShift({ day: 1, seed: 'early' });
+  while (idle.phase === 'running') step(idle);
+  assert.equal(idle.coins, 0);
+});
+
+test('co-op stalls get more customers, seats and counter spots', () => {
+  assert.deepEqual([1, 2, 3, 4].map(seatsFor), [4, 5, 5, 6]);
+  assert.deepEqual([1, 2, 3, 4].map(n => prepFor(n)), [3, 5, 6, 6]);
+  const solo = schedule({ day: 6, seed: 'team' }).length;
+  assert.ok(schedule({ day: 6, seed: 'team', players: 2 }).length > 1.4 * solo);
+  const s = createShift({ day: 6, seed: 'team', players: 2 });
+  assert.equal(s.players, 2);
+  assert.equal(s.seats.length, 5);
+  assert.equal(s.prep.length, 5);
+  assert.equal(createShift({ day: 6, players: 9 }).players, 1, 'out-of-range teams play solo');
+});
+
 test('the leaderboard server replays with this exact copy of the rules', async () => {
   // The Hawker Haggle server keeps a copy at server/hh/hawker_rush_rules/engine.mjs to check saved runs.
   // If you change engine.mjs: copy it there too (and raise ENGINE in competition.mjs and hawker_rush.py if old runs
@@ -207,5 +287,5 @@ test('the leaderboard server replays with this exact copy of the rules', async (
   const { createHash } = await import('node:crypto');
   const { readFile } = await import('node:fs/promises');
   const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
-  assert.equal(createHash('sha256').update(text).digest('hex'), '3b6ba5240c4dcc949f13e370105cc504e472e252cceb9dd640539698fabcfd2e');
+  assert.equal(createHash('sha256').update(text).digest('hex'), '5115b73a9ebcb1a37508cd17717a10ac5ba966ad58103ad62e98872506d6a442');
 });

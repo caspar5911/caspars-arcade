@@ -16,7 +16,7 @@ export const MAX_PLAYERS = 4; // co-op: friends sharing one stall
 export const WAVES = [[0, .9, 'open'], [20, 1.9, 'lunch'], [55, .7, 'breather'], [70, 1.6, 'dinner'], [SHIFT - 20, 0, 'closing']];
 export const CALL_TIP = 1.25; // a customer you called in early tips 25% more
 export const CALL_AHEAD = 12; // the bell calls in someone due within this many seconds
-export const EARLY_BONUS = .15; // closing early: this much per second left on the clock
+export const EARLY_BONUS = .15; // closing early: up to this much per second left on the clock (all served)
 
 // ---------------------------------------------------------------------------------------------------- the kitchen
 // bases: what a dish is built in
@@ -501,8 +501,10 @@ export function step(shift) {
   const everyoneDone = shift.next >= shift.arrivals.length && !shift.queue.length && shift.seats.every(c => !c);
   if (shift.mode !== 'speed' && everyoneDone && shift.t < SHIFT) {
     // everyone has been and gone: close early, with a bonus for the time left
+    // (the bonus is for good service: it shrinks with every customer who left unhappy or walked past)
+    const share = shift.served / Math.max(1, shift.served + shift.lost + shift.passed);
     shift.early = Math.floor(SHIFT - shift.t);
-    shift.earlyBonus = round2(shift.early * EARLY_BONUS);
+    shift.earlyBonus = round2(shift.early * EARLY_BONUS * share);
     shift.coins = round2(shift.coins + shift.earlyBonus);
     shift.phase = 'over';
     shift.events.push({ type: 'closed-early', seconds: shift.early, amount: shift.earlyBonus }, { type: 'over' });

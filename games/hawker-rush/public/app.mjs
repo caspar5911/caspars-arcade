@@ -613,7 +613,7 @@ function tutorialHint() {
   if (complete >= 0) {
     run.prep[complete].wrap.classList.add('guide');
     run.seats[0].el.classList.add('guide');
-    return 'Serve the kopi. Drag it to the customer, or tap the customer.';
+    return 'Kopi done! Tap it to serve (or drag it to the customer).';
   }
   const cup = shift.prep.findIndex(item => item?.base === 'cup');
   if (cup < 0) {
