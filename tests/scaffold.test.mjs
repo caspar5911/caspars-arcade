@@ -34,7 +34,9 @@ test('a draft is excluded from Pages until it is marked playable', async t => {
   await writeFile(join(folder, 'public', '.env'), 'example');
   const playable = run('scripts/build-pages.mjs', '101', '_playable');
   assert.equal(playable.status, 0, playable.stderr);
-  assert.match(await readFile(join(workspace, '_playable', 'index.html'), 'utf8'), /href="\.\/games\/test-arcade\/"/);
+  const catalog = await readFile(join(workspace, '_playable', 'index.html'), 'utf8');
+  assert.ok(catalog.indexOf('<h2>Test &amp; Arcade</h2>') < catalog.indexOf('<h2>RuleReaper</h2>'));
+  assert.match(catalog, /href="\.\/games\/test-arcade\/"/);
   assert.match(await readFile(join(workspace, '_playable', 'games', 'test-arcade', 'index.html'), 'utf8'), /Test &amp; Arcade/);
   await assert.rejects(readFile(join(workspace, '_playable', 'games', 'test-arcade', '.env')), { code: 'ENOENT' });
 
