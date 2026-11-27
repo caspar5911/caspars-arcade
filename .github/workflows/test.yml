@@ -24,6 +24,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
     environment:
@@ -50,6 +51,20 @@ jobs:
         if: steps.main-head.outputs.deploy == 'true'
         with:
           path: _site
+      - name: Wait for the Pages artifact to be listed
+        if: steps.main-head.outputs.deploy == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for delay in 0 1 2 4 8 16; do
+            sleep "$delay"
+            if count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages" --jq '.total_count') && [[ "$count" == 1 ]]; then
+              exit 0
+            fi
+          done
+          echo 'The GitHub Pages artifact did not become available.' >&2
+          exit 1
       - name: Deploy to GitHub Pages
         id: deployment
         if: steps.main-head.outputs.deploy == 'true'
