@@ -1,30 +1,27 @@
-﻿# RuleReaper
+# Caspar’s Arcade
 
-**Win the puzzle. Reap a rule. Challenge the next player.**
+[Open the arcade](https://caspar5911.github.io/RuleReaper/). GitHub Pages builds the hub and its games from this repository after tests pass on main.
 
-RuleReaper is an asynchronous competitive puzzle game: every successful player must outlaw a movement pattern they used, provided another legal solution survives. The resulting puzzle becomes the next generation of a shareable challenge.
+[Play RuleReaper](https://caspar5911.github.io/RuleReaper/games/rulereaper/), a shelved prototype about escaping a maze and banning a move. Earlier challenge links still open the correct maze and rules. See its [master plan](docs/MASTER_PLAN.md) for the original design.
 
-## Project status
+## Start another game
 
-The [P0 browser demo](https://caspar5911.github.io/RuleReaper/) includes a tutorial rematch and three mazes. Challenge links include the maze and its rules. Global chains, accounts, payments and analytics are not implemented.
+Use Node 24 from the repository root.
 
-## Agent entry point
+```sh
+node scripts/new-game.mjs my-game "My Game"
+```
 
-Read [AGENTS.md](AGENTS.md) and [the master plan](docs/MASTER_PLAN.md) before starting. The repository is public; never commit secrets or personal data.
+The command creates `games/my-game/game.json` and `games/my-game/public/index.html`. Put the browser-ready game and its relative assets in `public/`. You can preview a draft with `python3 -m http.server 8081 --directory games/my-game/public`.
 
-## Architecture direction
+When the game is ready for the hub, add a short summary in `game.json` and change its status from `draft` to `prototype` or `playable`. Add `public/cover.png` if you have a screenshot. Open a PR in this repo. Drafts stay out of the Pages artifact.
 
-Static browser client, deterministic puzzle engine, exact bounded solver, and later a transactional PostgreSQL-backed API. No live AI inference during gameplay.
-
-The GitHub Pages demo publishes from main after tests pass. The game offers a tap-to-reload button when it detects a newer release.
-
-## Run locally
-
-Requires Node 24 (tests) and Python 3 (static server).
+## Preview the hub
 
 ```sh
 node --test
-python3 -m http.server 8080
+node scripts/build-pages.mjs 1
+python3 -m http.server 8080 --directory _site
 ```
 
-Open http://localhost:8080. Use arrows or tap cells. Win, choose a verified restriction, then copy the next challenge link. No npm install required. See [master plan](docs/MASTER_PLAN.md) for viral growth, profitability and production gates.
+Open http://localhost:8080. Builds publish only the hub and the registered games’ public files. Keep credentials and private data outside the repository and out of every game’s public directory. See [AGENTS.md](AGENTS.md) for the PR and publishing workflow.

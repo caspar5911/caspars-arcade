@@ -1,4 +1,4 @@
-﻿name: Test and deploy
+name: Test and deploy
 on:
   push:
   pull_request:
@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: '24'
       - run: node --test
-      - run: node --check src/app.mjs
+      - run: node --check games/rulereaper/public/src/app.mjs
   pages:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: engine

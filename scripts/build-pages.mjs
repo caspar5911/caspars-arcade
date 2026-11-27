@@ -1,5 +1,7 @@
-﻿import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { copyFile, cp, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { escapeHtml, gameSlug } from './game-files.mjs';
 
 const [, , version, output = '_site'] = process.argv;
 const build = Number(version);
@@ -7,22 +9,96 @@ if (!Number.isSafeInteger(build) || build <= 0 || String(build) !== version) {
   throw new Error('Pass a positive release number to build-pages.mjs.');
 }
 
-const assetUrl = './assets/' + build;
-const assets = join(output, 'assets', version);
-await mkdir(assets, { recursive: true });
+const source = fileURLToPath(new URL('../', import.meta.url));
+const games = join(source, 'games');
+const assetUrl = './assets/' + version;
+const manifest = JSON.stringify({ build }) + '\n';
+const statuses = { prototype: 'Playable prototype', playable: 'Playable' };
 
-const source = new URL('../', import.meta.url);
-const modules = await readdir(new URL('src/', source));
-for (const file of modules.filter(name => name.endsWith('.mjs'))) {
-  await copyFile(new URL('src/' + file, source), join(assets, file));
+async function hasFile(path) {
+  try {
+    return (await lstat(path)).isFile();
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
 }
-await copyFile(new URL('style.css', source), join(assets, 'style.css'));
 
-const index = await readFile(new URL('index.html', source), 'utf8');
-const page = index
-  .replace('name="rulereaper-build" content="development"', 'name="rulereaper-build" content="' + build + '"')
+async function buildRuleReaper(publicFiles, target) {
+  const assets = join(target, 'assets', version);
+  await mkdir(assets, { recursive: true });
+  const modules = await readdir(join(publicFiles, 'src'));
+  for (const file of modules.filter(name => name.endsWith('.mjs'))) {
+    await copyFile(join(publicFiles, 'src', file), join(assets, file));
+  }
+  await copyFile(join(publicFiles, 'style.css'), join(assets, 'style.css'));
+
+  const index = await readFile(join(publicFiles, 'index.html'), 'utf8');
+  const page = index
+    .replace('name="rulereaper-build" content="development"', 'name="rulereaper-build" content="' + build + '"')
+    .replace('./style.css', assetUrl + '/style.css')
+    .replace('./src/app.mjs', assetUrl + '/app.mjs');
+  await writeFile(join(target, 'index.html'), page);
+  await writeFile(join(target, 'version.json'), manifest);
+}
+
+async function publicAsset(path) {
+  const name = basename(path);
+  if (name.startsWith('.') || name === 'node_modules') return false;
+  const entry = await lstat(path);
+  return entry.isFile() || entry.isDirectory();
+}
+
+function gameCard(slug, details, cover) {
+  const title = escapeHtml(details.title);
+  const href = './games/' + slug + '/';
+  const art = cover
+    ? '<div class="game-art"><img src="' + href + 'cover.png?v=' + version + '" alt=""></div>'
+    : '<div class="game-art fallback" aria-hidden="true">' + title + '</div>';
+  return '<article class="game">' + art + '<div class="game-info">' +
+    '<p class="game-status">' + statuses[details.status] + '</p>' +
+    '<h2>' + title + '</h2><p>' + escapeHtml(details.summary) + '</p>' +
+    '<a class="play" href="' + href + '">Play ' + title + '</a></div></article>';
+}
+
+const hubAssets = join(output, 'assets', version);
+await mkdir(hubAssets, { recursive: true });
+const cards = [];
+const gameFolders = await readdir(games, { withFileTypes: true });
+
+for (const entry of gameFolders.sort((a, b) => a.name.localeCompare(b.name))) {
+  const slug = entry.name;
+  if (!entry.isDirectory() || !gameSlug.test(slug)) continue;
+  const folder = join(games, slug);
+  const details = JSON.parse(await readFile(join(folder, 'game.json'), 'utf8'));
+  if (details.status === 'draft') continue;
+  if (!Object.hasOwn(statuses, details.status) || typeof details.title !== 'string' ||
+      !details.title.trim() || typeof details.summary !== 'string' || !details.summary.trim()) {
+    throw new Error('Check the title, summary and status in games/' + slug + '/game.json.');
+  }
+
+  const publicFiles = join(folder, 'public');
+  const target = join(output, 'games', slug);
+  if (!await hasFile(join(publicFiles, 'index.html'))) {
+    throw new Error('Missing games/' + slug + '/public/index.html.');
+  }
+  const cover = await hasFile(join(publicFiles, 'cover.png'));
+  if (slug === 'rulereaper') {
+    await buildRuleReaper(publicFiles, target);
+    if (cover) await copyFile(join(publicFiles, 'cover.png'), join(target, 'cover.png'));
+  } else {
+    await cp(publicFiles, target, { recursive: true, filter: publicAsset });
+  }
+  cards.push(gameCard(slug, details, cover));
+}
+
+const hub = await readFile(join(source, 'hub', 'index.html'), 'utf8');
+await writeFile(join(output, 'index.html'), hub
   .replace('./style.css', assetUrl + '/style.css')
-  .replace('./src/app.mjs', assetUrl + '/app.mjs');
-await writeFile(join(output, 'index.html'), page);
-await writeFile(join(output, 'version.json'), JSON.stringify({ build }) + '\n');
-await copyFile(new URL('.nojekyll', source), join(output, '.nojekyll'));
+  .replace('./legacy.mjs', assetUrl + '/legacy.mjs')
+  .replace('<!-- GAMES -->', () => cards.join('\n      ')));
+for (const file of ['style.css', 'legacy.mjs']) {
+  await copyFile(join(source, 'hub', file), join(hubAssets, file));
+}
+await writeFile(join(output, 'version.json'), manifest);
+await copyFile(join(source, '.nojekyll'), join(output, '.nojekyll'));

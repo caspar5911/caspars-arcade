@@ -1,6 +1,6 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeRules,direction,checkPath,solve,candidates} from '../src/engine.mjs';
+import {normalizeRules,direction,checkPath,solve,candidates} from '../games/rulereaper/public/src/engine.mjs';
 const path=[0,1,2,3,4,9,14,19,24];
 test('valid win',()=>assert.equal(checkPath(path,[]).ok,true));
 test('wraparound and diagonals',()=>{assert.equal(direction(4,5),null);assert.equal(direction(0,6),null);});
