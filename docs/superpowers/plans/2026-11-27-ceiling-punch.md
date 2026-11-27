@@ -25,9 +25,9 @@ Floors start at 0 and finish at 6. The first few cracks teach the action, and ti
 
 ## 1. Deterministic engine
 
-- [ ] Add `tests/ceiling-punch.test.mjs` and confirm it fails before implementing the engine.
-- [ ] Add `games/ceiling-punch/public/engine.mjs` with the contract below.
-- [ ] Verify a complete single-floor route, every available double-smash overlap, the final floor cap, a miss on either side of a crack, pass expiry, rapid taps during the smash, and immediate retry from a terminal state.
+- [x] Add `tests/ceiling-punch.test.mjs` and confirm it fails before implementing the engine.
+- [x] Add `games/ceiling-punch/public/engine.mjs` with the contract below.
+- [x] Verify a complete single-floor route, every available double-smash overlap, the final floor cap, a miss on either side of a crack, pass expiry, rapid taps during the smash, and immediate retry from a terminal state.
 
 The engine exports `WIDTH = 416`, `EDGE = 32`, `SPEED = 152`, `TICK = 1/120`, `TOP_FLOOR = 6`, `SMASH_SECONDS = .22`, and `CEILINGS`. The ceiling array contains the six rows above with sorted inclusive `[left, right]` pairs. `doubleWindows(floor)` returns intersections of the upcoming two rows, or an empty array when only one ceiling remains.
 
@@ -37,15 +37,15 @@ Phases are ready, running, smash, lost and won. An impact is `{x, from, cleared,
 
 ## 2. Browser game and catalog
 
-- [ ] Scaffold `games/ceiling-punch/` in the existing repository.
-- [ ] Build `index.html`, `style.css`, `app.mjs` and `render.mjs`. Show both ceilings, highlight genuine double-smash spans, show the robot’s punch or impact, and update the floor count and local personal best.
-- [ ] Wire one touch, mouse click or Space press to cover start, punch and retry. A held key must produce one punch.
-- [ ] Set the game manifest to playable prototype. Use a gameplay screenshot for the hub card and link the game and plan in the README.
+- [x] Scaffold `games/ceiling-punch/` in the existing repository.
+- [x] Build `index.html`, `style.css`, `app.mjs` and `render.mjs`. Show both ceilings, highlight genuine double-smash spans, show the robot’s punch or impact, and update the floor count and local personal best.
+- [x] Wire one touch, mouse click or Space press to cover start, punch and retry. A held key must produce one punch.
+- [x] Set the game manifest to playable prototype. Use a gameplay screenshot for the hub card and link the game and plan in the README.
 
 ## 3. Verify and publish
 
-- [ ] Run `node --test` and build the Pages artifact. Check that the hub and all three game URLs work and that the artifact includes the new game files.
-- [ ] In a browser, verify the first hit, double smash, early or late miss, impact mark, a one-tap retry, saved best, touch input, clearing floor six and returning to the arcade. Check a narrow mobile viewport.
+- [x] Run `node --test` and build the Pages artifact. Check that the hub and all three game URLs work and that the artifact includes the new game files.
+- [x] In a browser, verify the first hit, double smash, early or late miss, impact mark, a one-tap retry, saved best, touch input, clearing floor six and returning to the arcade. Check a narrow mobile viewport.
 - [ ] Review, open a feature PR, wait for checks, merge and verify the public game URL.
 
 A playtest with new players is the next measure of replay appeal. The release check covers controls, progression and deployment.

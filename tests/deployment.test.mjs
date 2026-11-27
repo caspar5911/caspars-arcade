@@ -61,4 +61,10 @@ test('the Pages artifact contains a hub and a versioned RuleReaper game', async 
   for (const asset of ['app.mjs', 'engine.mjs', 'progress.mjs', 'render.mjs', 'style.css']) {
     assert.ok((await readFile(join(snap, 'assets', '42', asset))).length > 0, asset);
   }
+  const punch = join(output, 'games', 'ceiling-punch');
+  assert.match(hub, /href="\.\/games\/ceiling-punch\/"/);
+  assert.match(await readFile(join(punch, 'index.html'), 'utf8'), /<h1>Ceiling <em>Punch<\/em><\/h1>/);
+  for (const asset of ['app.mjs', 'engine.mjs', 'render.mjs', 'style.css', 'cover.png']) {
+    assert.ok((await readFile(join(punch, asset))).length > 0, asset);
+  }
 });

@@ -1,0 +1,125 @@
+import { createRun, step, tap, TICK, TOP_FLOOR, WIDTH } from './engine.mjs';
+import { drawScene, HEIGHT } from './render.mjs';
+
+const board = document.getElementById('board');
+const strike = document.getElementById('strike');
+const score = document.getElementById('floor');
+const bestScore = document.getElementById('best');
+const status = document.getElementById('status');
+const context = board.getContext('2d');
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
+const storageKey = 'ceiling-punch-best';
+const run = createRun();
+let best = readBest();
+let previousFrame;
+let availableTime = 0;
+let previousPhase;
+
+function readBest() {
+  try {
+    const value = Number(localStorage.getItem(storageKey));
+    if (Number.isInteger(value) && value >= 0 && value <= TOP_FLOOR) return value;
+  } catch {
+    // The current run still works in private browsing.
+  }
+  return 0;
+}
+
+function updateScore() {
+  score.textContent = run.floor;
+  if (run.floor > best) {
+    best = Math.max(readBest(), run.floor);
+    try {
+      localStorage.setItem(storageKey, String(best));
+    } catch {
+      // Save the score in memory for the current session.
+    }
+  }
+  bestScore.textContent = best;
+}
+
+function updateInterface() {
+  if (run.phase === previousPhase) return;
+  updateScore();
+  strike.dataset.phase = run.phase;
+  switch (run.phase) {
+    case 'ready':
+      strike.textContent = 'Start run';
+      status.textContent = 'Break through a crack. Gold marks a double smash.';
+      break;
+    case 'running':
+      strike.textContent = 'Punch';
+      if (previousPhase !== 'smash') status.textContent = 'Line up with a crack, then punch.';
+      break;
+    case 'smash':
+      strike.textContent = 'Smash!';
+      status.textContent = run.impact.cleared === 2 ? 'Double smash!' : 'Ceiling cleared.';
+      break;
+    case 'lost':
+      strike.textContent = 'Try again';
+      status.textContent = run.impact.reason === 'passed' ? 'You passed the last crack.'
+        : run.impact.reason === 'early' ? 'Too early. You hit solid concrete before the crack.'
+          : 'Too late. You hit solid concrete after the crack.';
+      break;
+    case 'won':
+      strike.textContent = 'Play again';
+      status.textContent = 'Roof reached. All six floors cleared.';
+      break;
+  }
+  previousPhase = run.phase;
+}
+
+function takeInput() {
+  if (tap(run)) updateInterface();
+}
+
+for (const surface of [board, strike]) {
+  surface.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    takeInput();
+  });
+}
+strike.addEventListener('click', event => {
+  if (event.detail === 0) takeInput();
+});
+window.addEventListener('keydown', event => {
+  if (event.code !== 'Space' || event.target.closest?.('a, input, textarea') ||
+      event.ctrlKey || event.altKey || event.metaKey) return;
+  event.preventDefault();
+  if (!event.repeat) takeInput();
+});
+window.addEventListener('storage', event => {
+  if (event.key !== storageKey) return;
+  best = Math.max(best, readBest());
+  bestScore.textContent = best;
+});
+
+function resize() {
+  const scale = Math.min(devicePixelRatio || 1, 2);
+  board.width = Math.round(WIDTH * scale);
+  board.height = Math.round(HEIGHT * scale);
+  context.setTransform(board.width / WIDTH, 0, 0, board.height / HEIGHT, 0, 0);
+}
+
+function frame(time) {
+  const elapsed = Math.min(.05, (time - (previousFrame ?? time)) / 1000);
+  previousFrame = time;
+  if (!document.hidden) {
+    availableTime += elapsed;
+    while (availableTime >= TICK) {
+      step(run);
+      availableTime -= TICK;
+    }
+    updateInterface();
+    drawScene(context, run, motion.matches);
+  } else {
+    availableTime = 0;
+  }
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', resize);
+resize();
+updateInterface();
+requestAnimationFrame(frame);
