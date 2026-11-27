@@ -47,6 +47,8 @@ jobs:
         if: steps.main-head.outputs.deploy == 'true'
       - run: node scripts/build-pages.mjs "$GITHUB_RUN_NUMBER"
         if: steps.main-head.outputs.deploy == 'true'
+        env:
+          ARCADE_SERVER: ${{ vars.ARCADE_SERVER }}
       - uses: actions/upload-pages-artifact@v4
         if: steps.main-head.outputs.deploy == 'true'
         with:

@@ -119,3 +119,15 @@ for (const file of ['style.css', 'legacy.mjs']) {
 }
 await writeFile(join(output, 'version.json'), manifest);
 await copyFile(join(source, '.nojekyll'), join(output, '.nojekyll'));
+// 🏆 Where the arcade's leaderboards live: given at build time (a repository variable), never written in the repo.
+// Without it, games simply play without a leaderboard.
+const arcadeServer = process.env.ARCADE_SERVER?.trim() ?? '';
+if (arcadeServer) {
+  const url = new URL(arcadeServer);
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error('ARCADE_SERVER must be a plain https:// address.');
+  }
+  await writeFile(join(output, 'arcade-config.json'), JSON.stringify({ server: url.origin + url.pathname.replace(/\/$/, '') }) + '\n');
+} else {
+  await rm(join(output, 'arcade-config.json'), { force: true });
+}
