@@ -32,6 +32,12 @@ export function setMuted(value) {
 /** Call on a tap: creates (or wakes) the audio, which browsers only allow after the player touches the page. */
 export function unlock() {
   try {
+    // (iPhone: play like a game, even with the silent switch on, where the browser supports it)
+    if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback';
+  } catch {
+    // (not supported here)
+  }
+  try {
     if (!audio) {
       const Context = window.AudioContext || window.webkitAudioContext;
       if (!Context) return;
