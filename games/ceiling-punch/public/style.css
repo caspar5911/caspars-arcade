@@ -82,6 +82,32 @@ canvas {
   transition: opacity .2s;
 }
 #overlay[data-show="false"] { opacity: 0; pointer-events: none; }
+#overlay .card { transition: transform .35s cubic-bezier(.2, 1.4, .4, 1), opacity .25s; }
+#overlay[data-show="false"] .card { transform: translateY(40px) scale(.92); opacity: 0; }
+/* after a run: the result instead of the title */
+#overlay[data-mode="lost"] h1 { display: none; }
+#result { margin: 0 0 6px; }
+.result-label { margin: 0; color: var(--muted); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: .8rem; }
+.result-floor { margin: 2px 0 0; font-size: 2.6rem; font-weight: 900; line-height: 1.05; letter-spacing: -.03em; }
+.result-floor span { color: var(--gold); }
+.result-best { margin: 4px 0 0; color: var(--muted); font-weight: 650; }
+#resultBadge {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #2c1b16;
+  font-weight: 900;
+  letter-spacing: .04em;
+  animation: pop .5s cubic-bezier(.2, 1.6, .4, 1) both, glow 1.2s ease-in-out .5s infinite alternate;
+}
+#resultBadge[hidden] { display: none; }
+@keyframes pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes glow { to { box-shadow: 0 0 22px #ffb84ecc; } }
+@media (prefers-reduced-motion: reduce) {
+  #overlay .card, #resultBadge { transition: none; animation: none; }
+}
 .card {
   width: min(380px, 100%);
   max-height: calc(100dvh - 48px);

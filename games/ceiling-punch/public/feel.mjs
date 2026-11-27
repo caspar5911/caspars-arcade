@@ -172,3 +172,17 @@ export function start() {
   tone('triangle', 330, 660, .12, .15);
   tone('triangle', 495, 990, .14, .1, .07);
 }
+
+/** The game-over tune, after the crash or splash: three sad falling notes, or a bright fanfare for a new best. */
+export function gameOver(newBest = false) {
+  if (!ready()) return;
+  if (newBest) {
+    buzz([30, 60, 30, 60, 80]);
+    [587, 740, 880, 1175].forEach((f, i) => tone('triangle', f, f, .22, .2, i * .11)); // D, F♯, A, D: up!
+    tone('triangle', 1175, 1175, .6, .14, .44);
+    tone('sine', 2349, 2349, .5, .05, .5); // (a sparkle on top)
+    return;
+  }
+  [440, 349, 294].forEach((f, i) => tone('triangle', f, f * .98, .3, .2, i * .2)); // A, F, D: down
+  tone('sine', 147, 140, .9, .25, .6); // and a low D to end on
+}

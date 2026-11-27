@@ -19,6 +19,10 @@ const saveNote = document.getElementById('saveNote');
 const boardPanel = document.getElementById('leaderboard');
 const boardList = document.getElementById('boardList');
 const showBoardButton = document.getElementById('showBoard');
+const resultBox = document.getElementById('result');
+const resultFloor = document.getElementById('resultFloor');
+const resultBest = document.getElementById('resultBest');
+const resultBadge = document.getElementById('resultBadge');
 const context = board.getContext('2d');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const coarse = matchMedia('(pointer: coarse)');
@@ -33,6 +37,10 @@ let landedAt = -1e9; // (for the landing squash)
 let warnedFloor = -1; // (the flood warning, once a floor)
 let danger = 0; // 🎵 how close the water is, smoothed (the music follows it)
 let lostAt = -1e9; // (the calm loop comes back a moment after the splash)
+const CARD_DELAY = 950; // ms: the crash or splash plays out before the result card
+const TAP_LOCK = 1150; // ms: taps right after losing don't restart (you were tapping fast); the card is up by then
+let bestAtStart = 0; // (for "NEW BEST!")
+let gameOverTune = null;
 let view = { scale: 1, offset: 0, height: MIN_HEIGHT, ratio: 1 };
 // 🏆 this run, for the leaderboard: its ticket (null: started offline), engine ticks since the start, and the taps
 let currentTicket = null;
@@ -75,6 +83,9 @@ function react(from, to) {
     (run.impact.reason === 'flooded' ? feel.splash : feel.miss)();
     music.stop(false, run.impact.reason === 'flooded'); // (caught by the water: the music sinks)
     lostAt = performance.now();
+    const newBest = run.floor > bestAtStart && run.floor > 0;
+    clearTimeout(gameOverTune);
+    gameOverTune = setTimeout(() => feel.gameOver(newBest), 700); // (after the crash or splash)
   }
   if (to === 'running' && (from === 'ready' || from === 'lost')) danger = 0;
 }
@@ -84,7 +95,9 @@ function updateInterface() {
   if (previousPhase !== undefined) react(previousPhase, run.phase);
   updateScore();
   strike.dataset.phase = run.phase;
-  overlay.dataset.show = String(run.phase === 'ready' || run.phase === 'lost');
+  overlay.dataset.mode = run.phase;
+  // (after a run, the card waits for the crash or splash to play out: see frame())
+  if (run.phase !== 'lost') overlay.dataset.show = String(run.phase === 'ready');
   switch (run.phase) {
     case 'ready':
       strike.textContent = 'Start';
@@ -102,18 +115,39 @@ function updateInterface() {
       break;
     case 'lost': {
       strike.textContent = 'Try again';
+      showResult();
       offerSave();
-      const record = run.floor > 0 && run.floor >= best ? ' New best!' : '';
-      status.textContent = (run.impact.reason === 'flooded' ? `Splash! The flood caught you on floor ${run.floor}.`
-        : run.impact.reason === 'early' ? `Too early: solid concrete before the crack. Floor ${run.floor}.`
-          : `Too late: solid concrete after the crack. Floor ${run.floor}.`) + record;
+      status.textContent = run.impact.reason === 'flooded' ? 'Splash! The flood caught you.'
+        : run.impact.reason === 'early' ? 'Too early: solid concrete before the crack.'
+          : 'Too late: solid concrete after the crack.';
       break;
     }
   }
   previousPhase = run.phase;
 }
 
+/** The result on the game-over card: the floor (counting up as the card appears), the best, NEW BEST! */
+function showResult() {
+  const newBest = run.floor > bestAtStart && run.floor > 0;
+  resultBox.hidden = false;
+  resultBadge.hidden = !newBest;
+  resultBest.textContent = newBest ? (bestAtStart > 0 ? `Your old best was ${bestAtStart}.` : 'Your first record!')
+    : `Your best: ${best}`;
+  const target = run.floor;
+  resultFloor.textContent = '0';
+  const begin = performance.now() + CARD_DELAY;
+  const count = now => {
+    if (run.phase !== 'lost') return;
+    const p = Math.min(1, Math.max(0, (now - begin) / 650));
+    resultFloor.textContent = String(Math.round(target * (1 - (1 - p) ** 3)));
+    if (p < 1) requestAnimationFrame(count);
+  };
+  requestAnimationFrame(count);
+}
+
 function takeInput() {
+  // (just lost: the next taps don't restart straight away, so the crash can be seen)
+  if (run.phase === 'lost' && performance.now() - lostAt < TAP_LOCK) return;
   feel.unlock(); // (sound is only allowed after a tap)
   if (run.phase === 'ready' && coarse.matches) goFullScreen(); // (on a phone, the first start fills the screen)
   const before = run.phase;
@@ -127,6 +161,9 @@ function takeInput() {
 function startRun() {
   currentTicket = nextTicket;
   nextTicket = null;
+  bestAtStart = best;
+  clearTimeout(gameOverTune);
+  resultBox.hidden = true;
   if (currentTicket) run.seed = currentTicket.seed >>> 0; // (before any step: the tower is made from the seed)
   ticks = 0;
   taps = [];
@@ -350,11 +387,13 @@ function frame(time) {
     context.fillRect(0, 0, board.width, board.height);
     const { scale, offset, height, ratio } = view;
     context.setTransform(scale * ratio, 0, 0, scale * ratio, offset * ratio, 0);
+    if (run.phase === 'lost' && overlay.dataset.show !== 'true' && time - lostAt > CARD_DELAY) overlay.dataset.show = 'true';
     drawScene(context, run, {
       reducedMotion: motion.matches,
       time: time / 1000,
       height,
       landed: (time - landedAt) / 1000,
+      lost: run.phase === 'lost' ? (time - lostAt) / 1000 : 0,
     });
   } else {
     availableTime = 0;
