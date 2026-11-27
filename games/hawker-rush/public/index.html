@@ -31,6 +31,7 @@
       <p class="intro">Brew kopi, toast kaya bread and serve the lunch crowd at your own hawker stall.</p>
     </div>
     <button id="play" class="big" type="button">Play day 1</button>
+    <button id="openCoop" class="tile coop-tile" type="button"><span aria-hidden="true" class="mode-icon">👫</span><span>Play with friends<small>Share one stall, live, on your phones</small></span></button>
     <div class="mode-grid">
       <button id="openSpeed" class="tile" type="button"><span aria-hidden="true" class="mode-icon">◷</span><span>Speed Run<small id="speedBest">Serve 15 customers</small></span></button>
       <button id="openDaily" class="tile" type="button"><span aria-hidden="true" class="mode-icon">☀</span><span>Daily Rush<small id="dailyBest">A new shift every day</small></span></button>
@@ -57,6 +58,16 @@
       <div class="goalbar" id="goalbar" aria-hidden="true"><div id="goalFill" class="goal-fill"></div><div id="goalMarks"></div></div>
       <span id="servedCount" hidden></span>
       <time class="clock" id="clock">2:00</time>
+    </div>
+    <div id="team" class="team" hidden>
+      <span id="teamNames" class="team-names"></span>
+      <span id="teamSay" class="team-say" role="status"></span>
+      <span class="emotes">
+        <button type="button" data-emote="help" aria-label="Help!">🆘</button>
+        <button type="button" data-emote="drinks" aria-label="I’ll do drinks">☕</button>
+        <button type="button" data-emote="cooking" aria-label="I’ll cook">🍳</button>
+        <button type="button" data-emote="nice" aria-label="Nice!">👍</button>
+      </span>
     </div>
     <div class="scene">
       <div id="backdrop" class="backdrop" aria-hidden="true"></div>
@@ -102,6 +113,35 @@
       <button id="resHome" class="link" type="button">Home</button>
     </div>
   </dialog>
+
+  <section id="coop" class="page subpage" aria-labelledby="coopTitle" hidden>
+    <h2 id="coopTitle">Play with friends</h2>
+    <p class="intro">Up to four friends run one stall together, live, each on their own phone. One opens the stall; the others join with its code. More cooks, more customers!</p>
+    <div id="coopStart">
+      <label class="field-label" for="coopName">Your name</label>
+      <input id="coopName" class="field" maxlength="16" autocomplete="nickname" placeholder="Name" spellcheck="false">
+      <button id="coopCreate" class="big" type="button">Open a stall</button>
+      <p class="or">or join a friend’s stall</p>
+      <div class="join-row">
+        <input id="coopCode" class="field code" maxlength="5" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Stall code">
+        <button id="coopJoin" class="small-btn" type="button">Join</button>
+      </div>
+    </div>
+    <div id="coopRoom" hidden>
+      <p class="room-code">Stall code <b id="coopCodeShow"></b></p>
+      <button id="coopShare" class="ghost" type="button">Send the code to friends</button>
+      <ul id="coopPlayers" class="coop-players" aria-label="Cooks"></ul>
+      <div id="coopHost">
+        <label class="field-label" for="coopDay">Which day?</label>
+        <select id="coopDay" class="field"></select>
+        <button id="coopGo" class="big" type="button">Start the shift</button>
+      </div>
+      <p id="coopWait" class="note" role="status"></p>
+      <button id="coopLeave" class="link" type="button">Leave the stall</button>
+    </div>
+    <p id="coopNote" class="note" role="status"></p>
+    <button id="coopBack" class="link" type="button">Back</button>
+  </section>
 
   <section id="shop" class="page subpage" aria-labelledby="shopTitle" hidden>
     <h2 id="shopTitle">Shop <small id="shopWallet"></small></h2>
