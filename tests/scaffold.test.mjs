@@ -37,4 +37,10 @@ test('a draft is excluded from Pages until it is marked playable', async t => {
   assert.match(await readFile(join(workspace, '_playable', 'index.html'), 'utf8'), /href="\.\/games\/test-arcade\/"/);
   assert.match(await readFile(join(workspace, '_playable', 'games', 'test-arcade', 'index.html'), 'utf8'), /Test &amp; Arcade/);
   await assert.rejects(readFile(join(workspace, '_playable', 'games', 'test-arcade', '.env')), { code: 'ENOENT' });
+
+  metadata.status = 'draft';
+  await writeFile(join(folder, 'game.json'), JSON.stringify(metadata));
+  const rebuilt = run('scripts/build-pages.mjs', '102', '_playable');
+  assert.equal(rebuilt.status, 0, rebuilt.stderr);
+  await assert.rejects(readFile(join(workspace, '_playable', 'games', 'test-arcade', 'index.html')), { code: 'ENOENT' });
 });
