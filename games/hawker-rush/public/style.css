@@ -196,7 +196,7 @@ h2 small { color: var(--gold); font-size: .92rem; margin-left: 6px; }
 .awning { position: absolute; inset: 0 0 auto; width: 100%; z-index: -1; pointer-events: none; }
 .awning .stall-top { width: 100%; height: auto; }
 .awning .plant { top: clamp(30px, 10vw, 80px); bottom: auto; opacity: .86; }
-.seats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 21px 3px 0; }
+.seats { display: grid; grid-template-columns: repeat(var(--seats, 4), minmax(0, 1fr)); gap: 3px; padding: 21px 3px 0; }
 .seat {
   position: relative;
   display: flex;
@@ -475,6 +475,30 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 .banner { position: fixed; z-index: 30; left: 50%; top: 34%; padding: 8px 18px; border-radius: 14px; background: #2f9a5af0; color: #fff; font-size: 1.45rem; font-weight: 900; white-space: nowrap; pointer-events: none; animation: shout 1.3s ease-out forwards; }
 .banner.bad { background: #d8432ff0; }
 @keyframes shout { 0% { transform: translate(-50%, -50%) scale(.5); } 20% { transform: translate(-50%, -50%) scale(1.1); } 30%, 80% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+
+/* ------------------------------------------------ 👫 co-op */
+.coop-tile { width: 100%; margin: 0 0 8px; border-color: #7fd0ff88; background: linear-gradient(90deg, #22384a, #3a2a20); }
+.field-label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: .85rem; font-weight: 750; }
+.field { width: 100%; min-height: 46px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 12px; background: #1d140f; color: var(--ink); font: inherit; -webkit-user-select: text; user-select: text; }
+.field.code { text-transform: uppercase; letter-spacing: .3em; font-weight: 900; text-align: center; }
+.or { margin: 14px 0 6px; text-align: center; color: var(--muted); font-weight: 700; }
+.join-row { display: flex; gap: 8px; }
+.join-row .field { flex: 1; }
+.room-code { margin: 8px 0; text-align: center; font-size: 1rem; font-weight: 800; color: var(--muted); }
+.room-code b { display: block; font-size: 2.6rem; letter-spacing: .25em; color: var(--gold); }
+.coop-players { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 12px 0; padding: 0; }
+.coop-players li { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border: 2px solid var(--c); border-radius: 14px; background: #ffffff0c; font-size: .78rem; font-weight: 800; text-align: center; animation: popin .4s cubic-bezier(.3, 1.6, .5, 1); }
+.coop-players svg { width: 56px; height: 70px; }
+.team { position: relative; display: flex; align-items: center; gap: 6px; min-height: 44px; margin: 0 0 4px; padding: 0 2px; }
+.team-names { display: flex; flex-wrap: wrap; gap: 3px; flex: 1; min-width: 0; }
+.team .chip { padding: 1px 7px; border-radius: 10px; border: 2px solid var(--c); font-size: .7rem; font-weight: 850; white-space: nowrap; }
+.emotes { display: flex; gap: 3px; flex: none; }
+.emotes button { width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 10px; background: #ffffff10; font-size: 1.1rem; }
+.emotes button:active { transform: scale(.9); }
+.team-say { position: absolute; z-index: 6; left: 50%; top: 100%; transform: translate(-50%, -6px); padding: 4px 12px; border-radius: 12px; border: 2px solid var(--c, #fff); background: #241812f2; font-weight: 850; font-size: .9rem; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+.team-say.show { opacity: 1; transform: translate(-50%, 4px); }
+.pop.team { padding: 1px 7px; border-radius: 9px; color: #241812; font-size: .78rem; }
+.pop.team-0 { background: #ffcc6f; } .pop.team-1 { background: #7fd0ff; } .pop.team-2 { background: #ff8fb8; } .pop.team-3 { background: #9ce0a1; }
 
 /* ------------------------------------------------ the kitchen: one row per dish */
 .lines { display: flex; flex-wrap: wrap; gap: 6px; }

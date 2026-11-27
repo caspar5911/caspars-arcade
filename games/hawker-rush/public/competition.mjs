@@ -84,6 +84,11 @@ async function call(path, body, timeout) {
   return data;
 }
 
+/** The arcade server's address (from the site build), or null. Shared with co-op rooms. */
+export function arcadeServer() {
+  return getServer();
+}
+
 export async function startRankedRun(mode, key) {
   try {
     const data = await call('ticket', { mode, engine }, 3500);

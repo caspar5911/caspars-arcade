@@ -1,12 +1,13 @@
 import * as E from './engine.mjs';
 import * as Art from './art.mjs';
 import * as F from './feel.mjs';
+import * as Co from './coop.mjs';
 import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
 
 const $ = id => document.getElementById(id);
 const bellButton = document.getElementById('bell'); // (kept: the counter is rebuilt each shift)
 const SAVE_KEY = 'hawker-rush-save';
-const pages = ['home', 'intro', 'shift', 'shop', 'boards'];
+const pages = ['home', 'intro', 'shift', 'shop', 'boards', 'coop'];
 const stationActions = { toaster: 'Toast bread', pot: 'Boil eggs', grill: 'Grill satay' };
 const people = Object.fromEntries(E.PEOPLE.map(person => [person.id, person.name]));
 const ingredientLabels = { milk: 'Milk', soy: 'Soy', peanut: 'Peanut' };
@@ -142,6 +143,11 @@ function activeKey(mode) {
 }
 
 function home({ focus = true } = {}) {
+  if (Co.current()) {
+    stopListening?.();
+    Co.leave();
+  }
+  $('team').hidden = true;
   closeDialog('results');
   closeDialog('paused');
   closeDialog('recipes');
@@ -226,6 +232,7 @@ function prepare(mode, day = save.day, challenge = null, previous = null) {
 function buildSeats() {
   const seats = $('seats');
   seats.replaceChildren();
+  seats.style.setProperty('--seats', shift.seats.length);
   return shift.seats.map((_, index) => {
     const el = button('', 'seat empty');
     el.dataset.seat = index;
@@ -394,14 +401,14 @@ function buildGoals() {
 }
 
 function startShift() {
-  if (!pending || page !== 'intro') return;
+  if (!pending || (page !== 'intro' && !pending.coop)) return;
   const config = pending;
   pending = null;
   F.unlock();
   shift = E.createShift(config.spec);
   run = {
     ...config, actions: [], frame: 0, last: null, acc: 0, selected: -1,
-    guided: config.mode === 'day' && config.day === 1 && !save.guided, rushShown: false,
+    guided: config.mode === 'day' && config.day === 1 && !save.guided && !config.coop, rushShown: false,
     ticket: config.mode !== 'day' && config.key === activeKey(config.mode)
       ? startRankedRun(config.mode, config.key) : Promise.resolve(null),
   };
@@ -412,6 +419,8 @@ function startShift() {
   $('fx').replaceChildren();
   show('shift', run.title, run.key ?? '');
   run.seats = buildSeats();
+  $('team').hidden = !run.coop;
+  if (run.coop) renderTeam();
   run.prep = buildCounter();
   buildKitchen();
   buildGoals();
@@ -422,7 +431,316 @@ function startShift() {
   $('pause').focus({ preventScroll: true });
 }
 
+// ---------------------------------------------------------------------------------------------------- 👫 co-op
+let stopListening = null;
+let coopDay = null; // (the day the host picked, as a friend sees it)
+const AVATARS = ['auntie', 'office', 'student', 'tourist'];
+const nameOf = seat => Co.current()?.players?.find(p => p.seat === seat)?.name ?? `Cook ${seat + 1}`;
+
+function coopPage(code = '') {
+  closeDialog('results');
+  closeDialog('paused');
+  stopShift();
+  result = null;
+  pending = null;
+  $('team').hidden = true;
+  show('coop', 'Play with friends');
+  if (!$('coopName').value) $('coopName').value = save.nickname;
+  if (code) $('coopCode').value = code;
+  coopNote('');
+  renderRoom();
+}
+
+function coopNote(text, bad = false) {
+  setText($('coopNote'), text);
+  $('coopNote').classList.toggle('bad', bad);
+}
+
+function renderRoom() {
+  const room = Co.current();
+  $('coopStart').hidden = Boolean(room);
+  $('coopRoom').hidden = !room;
+  if (!room) return;
+  const host = room.seat === 0;
+  setText($('coopCodeShow'), room.code);
+  const list = $('coopPlayers');
+  list.replaceChildren();
+  for (const p of room.players ?? []) {
+    const li = document.createElement('li');
+    li.style.setProperty('--c', Co.COLOURS[p.seat]);
+    li.innerHTML = Art.person(AVATARS[p.seat], 'happy');
+    const label = document.createElement('span');
+    label.textContent = p.name + (p.seat === 0 ? ' · host' : '') + (p.seat === room.seat ? ' (you)' : '');
+    li.append(label);
+    list.append(li);
+  }
+  $('coopHost').hidden = !host;
+  if (host && !$('coopDay').options.length) {
+    for (let d = 1; d <= Math.min(Math.max(1, save.day), E.DAYS); d++) {
+      const option = document.createElement('option');
+      option.value = d;
+      option.textContent = `Day ${d}` + (E.newOn(d).length ? ` · ${E.newOn(d).map(id => E.DISHES[id].name).join(', ')}` : '');
+      $('coopDay').append(option);
+    }
+    $('coopDay').value = String(Math.min(Math.max(1, save.day), E.DAYS));
+  }
+  const n = room.players?.length ?? 1;
+  setText($('coopWait'), host
+    ? (n < 2 ? 'Waiting for friends to join… (send them the code)' : `${n} cooks ready. Start when everyone is here!`)
+    : `Waiting for ${nameOf(0)} to start the shift…` + (coopDay ? ` (Day ${coopDay})` : ''));
+}
+
+async function coopOpen(code) {
+  const name = $('coopName').value.trim();
+  if (code !== null && !/^[A-Za-z0-9]{5}$/.test(String(code).trim())) {
+    coopNote('Type the 5-letter stall code your friend sent you.', true);
+    return;
+  }
+  coopNote(code === null ? 'Opening your stall…' : 'Joining…');
+  try {
+    const room = code === null ? await Co.create(name) : await Co.join(code, name);
+    save.nickname = room.players.find(p => p.seat === room.seat)?.name ?? save.nickname;
+    persist();
+    stopListening?.();
+    stopListening = Co.listen({ messages: coopMessages, info: coopInfo, closed: coopClosed });
+    coopNote('');
+    $('coopDay').replaceChildren();
+    renderRoom();
+    if (room.seat === 0) Co.send({ t: 'day', day: Number($('coopDay').value) });
+  } catch (error) {
+    coopNote(error.message, true);
+  }
+}
+
+async function coopShare() {
+  const room = Co.current();
+  if (!room) return;
+  const url = new URL(location.href);
+  url.search = new URLSearchParams({ room: room.code }).toString();
+  url.hash = '';
+  const text = `Come help at my hawker stall in Hawker Rush! Stall code ${room.code}\n${url.href}`;
+  try {
+    if (navigator.share) await navigator.share({ text });
+    else {
+      await navigator.clipboard.writeText(text);
+      coopNote('Copied! Send it to your friends.');
+    }
+  } catch {
+    // (share sheet closed)
+  }
+}
+
+function coopGo() {
+  const room = Co.current();
+  if (!room || room.seat !== 0) return;
+  const upgrades = {};
+  for (const [id, level] of Object.entries(save.upgrades)) if (level) upgrades[id] = level;
+  const spec = {
+    day: Number($('coopDay').value) || 1, seed: 'coop-' + Math.random().toString(36).slice(2, 10),
+    mode: 'day', upgrades, players: Math.max(1, Math.min(E.MAX_PLAYERS, room.players.length)),
+  };
+  Co.send({ t: 'start', spec });
+  startCoopShift(spec);
+}
+
+function startCoopShift(spec) {
+  const room = Co.current();
+  if (!room) return;
+  closeDialog('results');
+  closeDialog('paused');
+  stopShift();
+  result = null;
+  pending = {
+    mode: 'day', spec, title: `Co-op · Day ${spec.day}`, day: spec.day, key: null, challenge: null,
+    coop: { role: room.seat === 0 ? 'host' : 'guest', seat: room.seat, out: [], incoming: [], remote: [],
+      upTo: 0, sentAt: 0, sentTicks: -1, heard: performance.now() },
+  };
+  startShift();
+}
+
+function coopMessages(list) {
+  const room = Co.current();
+  if (!room) return;
+  for (const m of list) {
+    if (m.t === 'emote') showEmote(m.from, m.e);
+    else if (room.seat === 0) {
+      if (m.t === 'act') remoteAct(m);
+    } else if (m.t === 'day') {
+      coopDay = m.day;
+      if (page === 'coop') renderRoom();
+    } else if (m.t === 'start') startCoopShift(m.spec);
+    else if (m.t === 'frames' && run?.coop) {
+      run.coop.incoming.push(...m.actions);
+      run.coop.upTo = Math.max(run.coop.upTo, m.upTo);
+      run.coop.heard = performance.now();
+    }
+  }
+}
+
+function coopInfo() {
+  if (page === 'coop') renderRoom();
+  if (run?.coop) renderTeam();
+}
+
+function coopClosed(reason) {
+  if (page === 'shift' && shift?.phase === 'running') {
+    coopPage();
+    coopNote(reason || 'The stall has closed.', true);
+  } else if (page === 'coop') {
+    renderRoom();
+    coopNote(reason || 'The stall has closed.', true);
+  }
+}
+
+/** The host plays a friend's tap (and sends it on with the next frame). */
+function remoteAct(m) {
+  if (!run?.coop || run.coop.role !== 'host' || shift.phase !== 'running') return;
+  if (!playing()) {
+    run.coop.remote.push(m);
+    return;
+  }
+  const mark = shift.events.length;
+  if (E.act(shift, m.kind, m.a, m.b)) {
+    run.actions.push([shift.ticks, m.kind, m.a, m.b]);
+    run.coop.out.push([shift.ticks, m.kind, m.a, m.b, m.from]);
+    tagMoves(m.from, mark);
+  } else shift.events.length = mark; // (a friend's slip: no buzz on this phone)
+  render();
+  handleEvents();
+}
+
+function hostFrame(now, force = false) {
+  const c = run.coop;
+  if (!force && now - c.sentAt < 150) return;
+  if (!force && !c.out.length && c.sentTicks === shift.ticks) return;
+  c.sentAt = now;
+  c.sentTicks = shift.ticks;
+  Co.send({ t: 'frames', upTo: shift.ticks, actions: c.out.splice(0) });
+}
+
+/** A friend's phone: replay the host's shift, never ahead of it (and catch up quickly when behind). */
+function guestTick(now) {
+  const c = run.coop;
+  const dt = run.last === null ? 0 : Math.min(.25, (now - run.last) / 1000);
+  run.last = now;
+  const behind = c.upTo - shift.ticks;
+  const quiet = behind > 60; // (far behind: jump to the present without every sound on the way)
+  const budget = quiet ? behind : Math.ceil(dt * 30 * (1 + Math.max(0, behind - 6) / 15));
+  const target = Math.min(c.upTo, shift.ticks + budget);
+  const before = shift.ticks;
+  while (shift.ticks < target && shift.phase === 'running') {
+    while (c.incoming.length && c.incoming[0][0] <= shift.ticks) {
+      const [, kind, a, b, who] = c.incoming.shift();
+      const mark = shift.events.length;
+      if (E.act(shift, kind, a, b) && !quiet) tagMoves(who, mark);
+    }
+    E.step(shift);
+  }
+  if (quiet) shift.events.length = 0;
+  if (before !== shift.ticks) {
+    render();
+    handleEvents();
+  }
+  const waiting = performance.now() - c.heard > 1500;
+  if (waiting !== c.waiting) {
+    c.waiting = waiting;
+    hintOverride = waiting ? { text: '📶 Waiting for the host’s phone…', until: Infinity } : null;
+    renderHint();
+  }
+  if (shift.phase === 'over') {
+    finish();
+    return;
+  }
+  run.frame = requestAnimationFrame(tick);
+}
+
+/** Show who did what: a little name tag in their colour where a friend's move landed. */
+function tagMoves(who, mark) {
+  if (who === run.coop?.seat) return;
+  for (const e of shift.events.slice(mark)) {
+    const anchor = e.spot >= 0 && run.prep[e.spot] ? run.prep[e.spot].wrap
+      : e.seat >= 0 && run.seats[e.seat] ? run.seats[e.seat].el
+        : e.station ? run.stations.find(view => view.id === e.station)?.el : null;
+    if (anchor) {
+      float(nameOf(who), anchor, `team team-${who}`);
+      return;
+    }
+  }
+}
+
+function renderTeam() {
+  const room = Co.current();
+  const names = $('teamNames');
+  names.replaceChildren();
+  for (const p of room?.players ?? []) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.style.setProperty('--c', Co.COLOURS[p.seat]);
+    chip.textContent = p.name + (p.seat === room.seat ? ' (you)' : '');
+    names.append(chip);
+  }
+}
+
+let sayTimer = 0;
+function showEmote(seat, e) {
+  const text = Co.EMOTES[e];
+  if (!text) return;
+  const say = $('teamSay');
+  say.textContent = `${nameOf(seat)}: ${text}`;
+  say.style.setProperty('--c', Co.COLOURS[seat] ?? '#fff');
+  say.classList.remove('show');
+  void say.offsetWidth;
+  say.classList.add('show');
+  if (seat !== Co.current()?.seat) F.sfx.arrive();
+  clearTimeout(sayTimer);
+  sayTimer = setTimeout(() => say.classList.remove('show'), 2600);
+}
+
+function finishCoop() {
+  clearDrag();
+  F.musicStop();
+  if (run.coop.role === 'host') {
+    hostFrame(performance.now(), true);
+    Co.send({ t: 'over' });
+  }
+  const stars = E.starsFor(shift.coins, shift.goal);
+  save.wallet = (cents(save.wallet) + cents(shift.coins)) / 100; // (everyone in the team earns the shift's takings)
+  save.totals.served += shift.served;
+  save.totals.shifts++;
+  persist();
+  result = { coop: true, mode: 'day', title: run.title, day: run.day };
+  F.sfx.stars(stars);
+  $('resTitle').textContent = stars ? 'Great teamwork!' : 'Shift over';
+  $('resStars').hidden = false;
+  $('resStars').textContent = starsText(stars);
+  $('resStars').setAttribute('aria-label', `${stars} out of 3 stars`);
+  $('resMoney').textContent = money(shift.coins) + ' earned together';
+  $('resRecord').hidden = true;
+  const rows = [['Cooks', (Co.current()?.players ?? []).map(p => p.name).join(', ') || '—'], ['Customers served', shift.served],
+    ['Left or walked past', shift.lost + shift.passed], ['Tips and combos', money(shift.tips)]];
+  if (shift.early) rows.push(['Closed early', `${shift.early} s early · +${money(shift.earlyBonus)}`]);
+  if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
+  rows.push(['Your wallet', money(save.wallet)]);
+  const list = $('resList');
+  list.replaceChildren();
+  for (const [label, value] of rows) {
+    const li = document.createElement('li');
+    const a = document.createElement('span');
+    a.textContent = label;
+    const b = document.createElement('b');
+    b.textContent = value;
+    li.append(a, b);
+    list.append(li);
+  }
+  for (const id of ['resNext', 'resChallenge', 'resShop', 'saveScore', 'shareLink', 'rankNotice']) $(id).hidden = true;
+  $('resRetry').textContent = 'Back to the stall';
+  setText($('saveNote'), '');
+  setText($('shareNote'), '');
+  openDialog('results');
+}
+
 function playing() {
+  if (run?.coop?.role === 'guest') return Boolean(shift?.phase === 'running' && !document.hidden); // (the host keeps time)
   return run && shift?.phase === 'running' && !$('paused').open && !$('recipes').open && !document.hidden;
 }
 
@@ -432,6 +750,11 @@ function tutorialWaiting() {
 
 function tick(now) {
   if (!run || shift.phase !== 'running') return;
+  if (run.coop?.role === 'guest') {
+    guestTick(now);
+    return;
+  }
+  if (playing() && run.coop?.remote.length) for (const m of run.coop.remote.splice(0)) remoteAct(m);
   if (playing()) {
     const ticks = shift.ticks;
     F.musicStart(false);
@@ -442,6 +765,7 @@ function tick(now) {
       run.acc -= E.TICK;
     }
     if (tutorialWaiting()) run.acc = 0;
+    if (run.coop) hostFrame(now);
     if (ticks !== shift.ticks) {
       render();
       handleEvents();
@@ -459,9 +783,17 @@ function tick(now) {
 
 function action(kind, a, b = -1) {
   if (!playing()) return false;
+  if (run.coop?.role === 'guest') {
+    // a friend's tap goes to the host's phone, which plays it; it shows here a moment later
+    Co.send({ t: 'act', kind, a, b });
+    if ((kind === 'bin-dish' || kind === 'serve') && a === run.selected) run.selected = -1;
+    render();
+    return true;
+  }
   const ok = E.act(shift, kind, a, b);
   if (ok) {
     run.actions.push([shift.ticks, kind, a, b]);
+    run.coop?.out.push([shift.ticks, kind, a, b, 0]);
     hintOverride = null;
     if (run.guided && shift.served > 0) {
       run.guided = false;
@@ -895,6 +1227,10 @@ function putRecord(mode, key, value) {
 }
 
 function finish() {
+  if (run.coop) {
+    finishCoop();
+    return;
+  }
   clearDrag();
   F.musicStop();
   const stars = E.starsFor(shift.coins, shift.goal);
@@ -1176,7 +1512,7 @@ $('openBoards').addEventListener('click', () => boards());
 $('startShift').addEventListener('click', startShift);
 $('introBack').addEventListener('click', () => home());
 $('resNext').addEventListener('click', () => prepare('day', result.day + 1));
-$('resRetry').addEventListener('click', () => prepare(result.mode, result.day, result.challenge, result.mode === 'day' ? null : result));
+$('resRetry').addEventListener('click', () => result?.coop ? coopPage() : prepare(result.mode, result.day, result.challenge, result.mode === 'day' ? null : result));
 $('resShop').addEventListener('click', () => shop('results'));
 $('resHome').addEventListener('click', () => home());
 $('resChallenge').addEventListener('click', shareChallenge);
@@ -1218,6 +1554,28 @@ $('sound').addEventListener('click', () => {
   showSound();
 });
 showSound();
+$('openCoop').addEventListener('click', () => coopPage());
+$('coopCreate').addEventListener('click', () => coopOpen(null));
+$('coopJoin').addEventListener('click', () => coopOpen($('coopCode').value));
+$('coopCode').addEventListener('keydown', event => { if (event.key === 'Enter') coopOpen($('coopCode').value); });
+$('coopShare').addEventListener('click', coopShare);
+$('coopGo').addEventListener('click', coopGo);
+$('coopLeave').addEventListener('click', async () => {
+  stopListening?.();
+  await Co.leave();
+  coopPage();
+});
+$('coopBack').addEventListener('click', () => home());
+$('coopDay').addEventListener('change', () => Co.send({ t: 'day', day: Number($('coopDay').value) }));
+for (const b of $('team').querySelectorAll('[data-emote]')) {
+  b.addEventListener('click', () => {
+    Co.send({ t: 'emote', e: b.dataset.emote });
+    showEmote(Co.current()?.seat ?? 0, b.dataset.emote);
+  });
+}
+
 const challenge = parseChallenge(location.href);
+const roomLink = new URL(location.href).searchParams.get('room');
 if (challenge) prepare(challenge.mode, challenge.spec.day, challenge);
+else if (roomLink && /^[A-Za-z0-9]{5}$/.test(roomLink)) coopPage(roomLink.toUpperCase());
 else home({ focus: false });
