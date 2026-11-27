@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="hawker-rush-build" content="development">
+  <meta name="theme-color" content="#2c1a12">
+  <meta name="description" content="Hawker Rush: run a hawker stall for a 90-second shift. Cook kopi, kaya toast, chicken rice and satay, serve before customers lose patience, earn tips and upgrade your stall.">
+  <title>Hawker Rush · Caspar’s Arcade</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="hud">
+    <a class="icon" id="back" href="../../" aria-label="All games">‹</a>
+    <div class="hud-mid">
+      <span id="hudTitle">Hawker Rush</span>
+      <span id="hudSub" class="hud-sub"></span>
+    </div>
+    <button id="pause" class="icon" type="button" aria-label="Pause" hidden>⏸</button>
+    <button id="sound" class="icon" type="button" aria-label="Sound on"></button>
+  </div>
+
+  <!-- home -->
+  <main id="home" class="page">
+    <div class="stall-sign" id="homeDecor" aria-hidden="true"></div>
+    <h1>Hawker <em>Rush</em></h1>
+    <p class="intro">Run the stall! Tap a station to cook, tap it again when it’s ready to serve. Be quick: customers don’t wait forever.</p>
+    <button id="play" class="big" type="button">▶ Day 1</button>
+    <div class="row2">
+      <button id="openShop" class="tile" type="button"><span>🛒 Shop</span><small id="wallet">$0</small></button>
+      <button id="openDaily" class="tile" type="button"><span>📅 Daily Rush</span><small id="dailyBest">Same shift for everyone</small></button>
+    </div>
+    <h2>Days</h2>
+    <div id="days" class="days"></div>
+  </main>
+
+  <!-- before a shift -->
+  <section id="intro" class="page" hidden>
+    <h2 id="introTitle">Day 1</h2>
+    <div id="introNew" class="new-dish" hidden></div>
+    <p class="goals" id="introGoals"></p>
+    <p class="intro" id="introTip"></p>
+    <button id="startShift" class="big" type="button">Open the stall!</button>
+    <button id="introBack" class="link" type="button">Back</button>
+  </section>
+
+  <!-- the shift -->
+  <section id="shift" hidden>
+    <div class="topline">
+      <span class="money" id="money">$0</span>
+      <div class="goalbar" aria-hidden="true"><div id="goalFill" class="goal-fill"></div><div id="goalMarks"></div></div>
+      <span class="clock" id="clock">1:30</span>
+    </div>
+    <div class="counter" id="seats" aria-label="Customers"></div>
+    <p class="queue" id="queue" aria-live="polite"></p>
+    <div class="kitchen" id="kitchen" aria-label="Kitchen"></div>
+    <p class="hint" id="hint" role="status"></p>
+    <div id="floaters" class="floaters" aria-hidden="true"></div>
+  </section>
+
+  <!-- results -->
+  <section id="results" class="overlay" hidden>
+    <div class="card">
+      <p class="res-title" id="resTitle">Shift over!</p>
+      <p class="res-stars" id="resStars"></p>
+      <p class="res-money" id="resMoney"></p>
+      <ul class="res-list" id="resList"></ul>
+      <button id="resNext" class="big" type="button">Next day ▶</button>
+      <button id="resShare" class="ghost" type="button" hidden>Share result</button>
+      <div class="row2">
+        <button id="resRetry" class="ghost" type="button">↻ Try again</button>
+        <button id="resShop" class="ghost" type="button">🛒 Shop</button>
+      </div>
+      <button id="resHome" class="link" type="button">Home</button>
+    </div>
+  </section>
+
+  <!-- the shop -->
+  <section id="shop" class="page" hidden>
+    <h2>🛒 Shop <small id="shopWallet"></small></h2>
+    <p class="intro">Upgrades make your stall faster and your customers happier. Decorations are just for looks!</p>
+    <div id="shopList" class="shop-list"></div>
+    <h2>Decorations</h2>
+    <div id="decorList" class="shop-list"></div>
+    <button id="shopBack" class="big" type="button">Done</button>
+  </section>
+
+  <!-- paused -->
+  <section id="paused" class="overlay" hidden>
+    <div class="card">
+      <p class="res-title">Paused</p>
+      <button id="resume" class="big" type="button">▶ Resume</button>
+      <button id="quit" class="link" type="button">Quit this shift</button>
+    </div>
+  </section>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
