@@ -1,552 +1,1100 @@
 import * as E from './engine.mjs';
+import * as Art from './art.mjs';
 import * as F from './feel.mjs';
+import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
 
 const $ = id => document.getElementById(id);
-const pages = ['home', 'intro', 'shift', 'shop'];
 const SAVE_KEY = 'hawker-rush-save';
+const pages = ['home', 'intro', 'shift', 'shop', 'boards'];
+const stationActions = { toaster: 'Toast bread', pot: 'Boil eggs', grill: 'Grill satay' };
+const people = Object.fromEntries(E.PEOPLE.map(person => [person.id, person.name]));
+const ingredientLabels = { milk: 'Milk', soy: 'Soy', peanut: 'Peanut' };
+const cents = value => Math.round(value * 100);
+const money = value => '$' + (value % 1 ? value.toFixed(2) : value.toFixed(0));
+const duration = value => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
+const scoreText = (mode, value) => mode === 'speed' ? `${(value / 100).toFixed(2)} s` : money(value / 100);
+const starsText = count => '★'.repeat(count) + '☆'.repeat(3 - count);
 
-// ---------------------------------------------------------------------------------------------------- saved progress
-function load() {
-  const fresh = { day: 1, best: {}, wallet: 0, upgrades: {}, decor: {}, daily: {}, totals: { served: 0, shifts: 0 } };
-  try {
-    const s = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
-    return s ? { ...fresh, ...s, totals: { ...fresh.totals, ...(s.totals ?? {}) } } : fresh;
-  } catch {
-    return fresh;
-  }
+function boundedInt(value, min, max, fallback = min) {
+  return Number.isSafeInteger(value) ? Math.max(min, Math.min(value, max)) : fallback;
 }
-const save = load();
+
+function loadSave() {
+  let raw;
+  try {
+    raw = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
+  } catch {
+    raw = null;
+  }
+  // V1 story days, wallet, and shop ownership carry over. V1 daily scores used different rules.
+  // (story days restart for first-version players: the dishes are all new, so they get the recipe cards and the guide)
+  const day = raw?.version === 2 ? boundedInt(raw?.day, 1, Number.MAX_SAFE_INTEGER - 1) : 1;
+  const best = {};
+  for (const [id, stars] of Object.entries(raw?.version === 2 ? raw?.best ?? {} : {})) {
+    if (/^[1-9]\d*$/.test(id) && Number(id) <= day) best[id] = boundedInt(stars, 0, 3);
+  }
+  const upgrades = {};
+  for (const [id, upgrade] of Object.entries(E.UPGRADES)) {
+    const level = boundedInt(raw?.upgrades?.[id], 0, upgrade.costs.length);
+    if (level) upgrades[id] = level;
+  }
+  const decor = {};
+  for (const id of Object.keys(E.DECOR)) {
+    if (raw?.decor?.[id] === true) decor[id] = true;
+  }
+  const records = { daily: {}, speed: {} };
+  for (const mode of Object.keys(records)) {
+    if (raw?.version !== 2) break;
+    for (const [key, value] of Object.entries(raw?.records?.[mode] ?? {})) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isSafeInteger(value) && value >= 0) records[mode][key] = value;
+    }
+  }
+  return {
+    version: 2, day, best, upgrades, decor, records,
+    wallet: Number.isFinite(raw?.wallet) && raw.wallet > 0 ? raw.wallet : 0,
+    guided: raw?.guided === true || day > 1,
+    nickname: typeof raw?.nickname === 'string' ? raw.nickname.slice(0, 16) : '',
+    totals: Object.fromEntries(['served', 'shifts'].map(key => [
+      key, boundedInt(raw?.totals?.[key], 0, Number.MAX_SAFE_INTEGER),
+    ])),
+  };
+}
+
+const save = loadSave();
+let page = 'home';
+let pending = null;
+let run = null;
+let shift = null;
+let result = null;
+let drag = null;
+let suppressClick = null;
+let hintOverride = null;
+let boardMode = 'speed';
+let boardRequest = 0;
+let shopReturn = 'home';
+
 function persist() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(save));
   } catch {
-    // (private browsing: kept for this visit)
+    // Storage can be disabled. The current visit still retains progress.
   }
 }
-const money = v => '$' + (Math.round(v * 100) / 100).toFixed(v % 1 ? 2 : 0);
 
-function show(page) {
-  for (const p of pages) $(p).hidden = p !== page;
-  $('pause').hidden = page !== 'shift';
+function button(label, className = '') {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.textContent = label;
+  if (className) el.className = className;
+  return el;
+}
+
+function show(next, title, subtitle = '') {
+  page = next;
+  for (const id of pages) $(id).hidden = id !== next;
+  document.body.classList.toggle('in-shift', next === 'shift');
+  $('pause').hidden = next !== 'shift';
+  $('hudTitle').textContent = title;
+  $('hudSub').textContent = subtitle;
   window.scrollTo(0, 0);
 }
 
-// ---------------------------------------------------------------------------------------------------- home
-function decorLine() {
-  return Object.keys(E.DECOR).filter(id => save.decor[id]).map(id => E.DECOR[id].emoji).join(' ');
+function focusHeading(el) {
+  el.tabIndex = -1;
+  el.focus({ preventScroll: true });
 }
 
-function home() {
-  stopShift();
-  if (!F.musicPlaying()) F.musicStart(true); // (a calm loop, once sound is allowed)
-  show('home');
-  $('hudTitle').textContent = 'Hawker Rush';
-  $('hudSub').textContent = '';
-  $('homeDecor').textContent = decorLine();
-  $('play').textContent = `▶ Day ${save.day}` + (save.day > E.DAYS ? ' (endless)' : '');
-  $('wallet').textContent = money(save.wallet);
-  const today = E.daily();
-  $('dailyBest').textContent = save.daily.key === today.key ? `Today’s best: ${money(save.daily.best)}` : `#${today.number} · same shift for everyone`;
-  const grid = $('days');
-  grid.replaceChildren();
-  for (let d = 1; d <= Math.max(E.DAYS, save.day); d++) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.disabled = d > save.day;
-    if (d === save.day) b.className = 'next';
-    const stars = save.best[d] ?? 0;
-    b.innerHTML = `<span>${d}</span><small>${d > save.day ? '🔒' : '⭐'.repeat(stars)}</small>`;
-    b.setAttribute('aria-label', `Day ${d}` + (d > save.day ? ', locked' : stars ? `, ${stars} stars` : ''));
-    b.addEventListener('click', () => intro('day', d));
-    grid.append(b);
+function closeDialog(id) {
+  if ($(id).open) $(id).close();
+}
+
+function openDialog(id) {
+  if (!$(id).open) $(id).showModal();
+}
+
+function setContent(el, html) {
+  if (el.html !== html) {
+    el.html = html;
+    el.innerHTML = html;
   }
 }
 
-// ---------------------------------------------------------------------------------------------------- before a shift
-let pending = null; // { mode, spec, title }
-
-function intro(mode, day) {
-  const spec = mode === 'daily'
-    ? E.daily().shift
-    : { day, seed: 'day-' + day, upgrades: { ...save.upgrades } };
-  const title = mode === 'daily' ? `Daily Rush #${E.daily().number}` : `Day ${day}`;
-  pending = { mode, spec, title, dayNumber: day };
-  show('intro');
-  $('hudTitle').textContent = title;
-  $('hudSub').textContent = '';
-  $('introTitle').textContent = title;
-  const goal = E.goals(E.schedule(spec.day, spec.seed, spec.upgrades));
-  $('introGoals').textContent = `⭐ ${money(goal[0])}  ·  ⭐⭐ ${money(goal[1])}  ·  ⭐⭐⭐ ${money(goal[2])}`;
-  const fresh = mode === 'day' ? E.newDishOn(day) : null;
-  const box = $('introNew');
-  box.hidden = !fresh;
-  if (fresh) {
-    const d = E.DISHES[fresh], st = E.STATIONS[fresh];
-    box.innerHTML = `New on the menu: <b>${d.emoji} ${d.name}</b> (${money(d.price)})` +
-      (st.burn ? ' · ⚠️ it burns if you leave it ready too long!' : '');
-  }
-  $('introTip').textContent = mode === 'daily'
-    ? 'Everyone gets this same shift today (all dishes, a standard stall, no upgrades). Beat your friends!'
-    : day === 1
-      ? 'Tap ☕ Kopi to brew a kopi. When it’s ready (green ring), tap ☕ Kopi again to serve it to a customer.'
-      : day > E.DAYS
-        ? 'Endless days: the rush only gets busier. How long can you keep up?'
-        : `${E.schedule(spec.day, spec.seed, spec.upgrades).length} customers today. You need ⭐ to unlock the next day.`;
-}
-
-// ---------------------------------------------------------------------------------------------------- the shift
-let shift = null, run = null; // run: { mode, spec, title, taps, raf, last, acc, paused, seatKeys, rushShown, lastSecond }
-
-function startShift() {
-  F.unlock();
-  const { mode, spec, title } = pending;
-  shift = E.createShift(spec);
-  run = { mode, spec, title, taps: [], raf: 0, last: 0, acc: 0, paused: false, seatKeys: [], rushShown: false, lastSecond: 99, dayNumber: pending.dayNumber };
-  show('shift');
-  $('hudTitle').textContent = title;
-  buildCounter();
-  buildKitchen();
-  F.musicStop();
-  F.sfx.start();
-  render();
-  run.raf = requestAnimationFrame(frame);
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
 }
 
 function stopShift() {
-  if (run) cancelAnimationFrame(run.raf);
+  if (run) cancelAnimationFrame(run.frame);
+  clearDrag();
   run = null;
-  F.musicPause(false);
+  shift = null;
+  $('fx').replaceChildren();
+}
+
+function stall(decor) {
+  return Art.stallTop(decor) + (decor.plants
+    ? '<span class="plant left">🪴</span><span class="plant right">🪴</span>' : '');
+}
+
+function activeKey(mode) {
+  return mode === 'speed' ? E.speedRun().key : E.dayKey();
+}
+
+function home({ focus = true } = {}) {
+  closeDialog('results');
+  closeDialog('paused');
+  closeDialog('recipes');
+  stopShift();
+  result = null;
+  pending = null;
+  if (F.musicPlaying() && !F.musicCalm()) F.musicStop();
+  F.musicStart(true);
+  show('home', 'Hawker Rush');
+  $('homeStall').innerHTML = stall(save.decor) +
+    `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.dish('cup', ['kopi', 'milk'])}${Art.person('uncle', 'happy')}</div>`;
+  $('play').textContent = save.day > E.DAYS ? `Play endless day ${save.day}` : `Play day ${save.day}`;
+  $('wallet').textContent = money(save.wallet);
+  const today = E.daily();
+  const dailyBest = save.records.daily[today.key];
+  const speedBest = save.records.speed[activeKey('speed')];
+  $('dailyBest').textContent = dailyBest === undefined ? 'A new shift every day' : `Best ${scoreText('daily', dailyBest)}`;
+  $('speedBest').textContent = speedBest === undefined ? `Serve ${E.SPEED_CUSTOMERS} customers` : `Best ${scoreText('speed', speedBest)}`;
+  const grid = $('days');
+  grid.replaceChildren();
+  // Keep all story days and a bounded window of unlocked endless days.
+  const count = Math.max(E.DAYS, save.day);
+  const days = Array.from({ length: E.DAYS }, (_, index) => index + 1);
+  for (let d = Math.max(E.DAYS + 1, count - 9); d <= count; d++) days.push(d);
+  for (const day of days) {
+    const unlocked = day <= save.day;
+    const stars = save.best[day] ?? 0;
+    const item = button('');
+    item.disabled = !unlocked;
+    item.classList.toggle('next', day === save.day);
+    item.innerHTML = `<span>${day}</span><small>${unlocked ? starsText(stars) : 'Locked'}</small>`;
+    item.setAttribute('aria-label', `Day ${day}, ${unlocked ? stars + ' of 3 stars' : 'locked'}`);
+    item.addEventListener('click', () => prepare('day', day));
+    grid.append(item);
+  }
+  if (focus) focusHeading($('homeTitle'));
+}
+
+function recipeCard(id) {
+  const recipe = E.DISHES[id];
+  const steps = recipe.has.map(part => {
+    const ing = E.INGREDIENTS[part];
+    return ing.cooked ? `${ing.name} from the ${E.STATIONS[ing.cooked].name.toLowerCase()}` : ing.name;
+  });
+  return `<article class="recipe"><span class="recipe-art">${Art.dish(recipe.base, recipe.has)}</span>
+    <div><strong>${recipe.name}</strong><span>${E.BASES[recipe.base].name} · ${steps.join(' · ')}</span></div></article>`;
+}
+
+function prepare(mode, day = save.day, challenge = null, previous = null) {
+  closeDialog('results');
+  stopShift();
+  result = null;
+  const competition = mode === 'daily' ? E.daily(challenge?.key) : mode === 'speed' ? E.speedRun() : null;
+  const key = challenge?.key ?? previous?.key ?? competition?.key;
+  const spec = challenge?.spec ?? previous?.spec ?? competition?.spec ?? {
+    day, seed: `day-${day}`, mode: 'day', upgrades: { ...save.upgrades },
+  };
+  const title = mode === 'speed' ? 'Speed Run'
+    : mode === 'daily' ? `Daily Rush #${E.daily(key).number}`
+      : day > E.DAYS ? `Endless day ${day}` : `Day ${day}`;
+  pending = { mode, spec, title, day, key, challenge };
+  show('intro', title, key ?? '');
+  $('introTitle').textContent = title;
+  const briefing = $('introChallenge');
+  briefing.hidden = !challenge;
+  briefing.textContent = challenge ? `Friend’s target · ${scoreText(mode, challenge.value)}` : '';
+  const fresh = mode === 'day' ? E.newOn(day) : [];
+  $('introNew').hidden = !fresh.length;
+  $('introNew').innerHTML = fresh.length ? `<h3>${day === 1 ? 'Your first order' : 'New on the menu'}</h3>${fresh.map(recipeCard).join('')}` : '';
+  const orders = E.schedule(spec);
+  $('introGoals').textContent = mode === 'speed'
+    ? `${E.SPEED_CUSTOMERS} customers · 10 s penalty per missed customer`
+    : E.goals(orders).map((goal, index) => `${'★'.repeat(index + 1)} ${money(goal)}`).join('   ·   ');
+  $('introTip').textContent = mode === 'day'
+    ? day === 1 ? 'Build a kopi from scratch and serve it to your first customer.'
+      : `${orders.length} customers in this shift. Earn one star to unlock the next day.`
+    : mode === 'daily' ? 'Two minutes, the full menu and a standard stall. Earn as much as you can.'
+      : 'Clear the orders as quickly as you can. Everyone gets the same queue this week.';
+  focusHeading($('introTitle'));
+}
+
+function buildSeats() {
+  const seats = $('seats');
+  seats.replaceChildren();
+  return shift.seats.map((_, index) => {
+    const el = button('', 'seat empty');
+    el.dataset.seat = index;
+    el.innerHTML = '<span class="orders"></span><span class="portrait"></span><span class="patience" aria-hidden="true"><span></span></span>';
+    el.addEventListener('click', () => serveSeat(index));
+    seats.append(el);
+    return {
+      el, orders: el.querySelector('.orders'), portrait: el.querySelector('.portrait'),
+      patience: el.querySelector('.patience span'),
+    };
+  });
 }
 
 function buildCounter() {
-  const seats = $('seats');
-  seats.replaceChildren();
-  run.seatEls = shift.seats.map(() => {
-    const el = document.createElement('div');
-    el.className = 'seat empty';
-    seats.append(el);
-    return el;
+  const counter = $('counter');
+  counter.replaceChildren();
+  counter.style.setProperty('--spots', shift.prep.length);
+  return shift.prep.map((_, index) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'prep';
+    wrap.dataset.prep = index;
+    const el = button('', 'prep-item');
+    el.innerHTML = '<span class="prep-art"></span><span class="prep-name"></span>';
+    el.addEventListener('click', () => selectPrep(index));
+    bindDrag(el, () => shift.prep[index] && {
+      kind: 'dish', value: index, html: Art.dish(shift.prep[index].base, shift.prep[index].has),
+      canServe: Boolean(E.dishOf(shift.prep[index])),
+    });
+    const bin = button('×', 'prep-bin');
+    bin.setAttribute('aria-label', `Bin dish in spot ${index + 1}`);
+    bin.title = `Bin dish (costs ${money(E.WASTE_COST)})`;
+    bin.addEventListener('click', () => action('bin-dish', index));
+    wrap.append(el, bin);
+    counter.append(wrap);
+    return { wrap, el, bin, art: el.querySelector('.prep-art'), name: el.querySelector('.prep-name') };
   });
-  const marks = $('goalMarks');
-  marks.replaceChildren();
-  const top = shift.goal[2] * 1.05;
-  shift.goal.forEach((g, i) => {
-    const m = document.createElement('span');
-    m.className = 'goal-mark';
-    m.style.left = (100 * g / top) + '%';
-    m.textContent = '⭐';
-    m.title = `${i + 1} star${i ? 's' : ''}: ${money(g)}`;
-    marks.append(m);
+}
+
+function stockButton(kind, id, name) {
+  const el = button('', 'stock ' + ({ cup: 'cupfam', plate: 'platefam', bowl: 'bowlfam' })[kind === 'base' ? id : E.INGREDIENTS[id].base]);
+  const html = Art.icon(id);
+  el.dataset.stock = id;
+  el.innerHTML = `${html}<span>${ingredientLabels[id] ?? name}</span>`;
+  el.setAttribute('aria-label', name);
+  el.addEventListener('click', () => useStock(kind, id));
+  bindDrag(el, () => ({ kind, value: id, html }));
+  return el;
+}
+
+function buildStations() {
+  const parent = $('stations');
+  parent.replaceChildren();
+  parent.hidden = !shift.kitchen.stations.length;
+  return shift.kitchen.stations.map(id => {
+    const station = E.STATIONS[id];
+    const el = document.createElement('div');
+    el.className = 'station';
+    const cook = button('', 'station-cook');
+    cook.setAttribute('aria-label', stationActions[id]);
+    cook.title = stationActions[id];
+    cook.innerHTML = `<span class="station-picture"></span><span class="station-name">${station.name}</span>`;
+    cook.addEventListener('click', () => action('cook', id));
+    const take = button('Add', 'station-take');
+    take.setAttribute('aria-label', `Add ${E.INGREDIENTS[station.makes].name.toLowerCase()}`);
+    take.addEventListener('click', () => useStock('add', station.makes));
+    bindDrag(take, () => ({
+      kind: 'add',
+      value: station.makes,
+      html: Art.dish(E.INGREDIENTS[station.makes].base, [station.makes]),
+    }));
+    const bin = button('Bin', 'station-bin');
+    bin.setAttribute('aria-label', `Bin burnt food at ${station.name.toLowerCase()}`);
+    bin.title = `Bin burnt food (costs ${money(E.BURNT_COST)})`;
+    bin.addEventListener('click', () => action('bin-burnt', id));
+    const track = document.createElement('div');
+    track.className = 'station-track';
+    const meters = shift.stations[id].slots.map(() => {
+      const node = document.createElement('span');
+      node.innerHTML = '<i></i>';
+      track.append(node);
+      return { node, fill: node.firstElementChild };
+    });
+    const info = document.createElement('span');
+    info.className = 'station-info';
+    el.append(cook, take, bin, track, info);
+    parent.append(el);
+    return { id, el, cook, take, bin, meters, info, art: cook.firstElementChild };
   });
 }
 
 function buildKitchen() {
-  const k = $('kitchen');
-  k.replaceChildren();
-  const ids = Object.keys(shift.stations);
-  k.className = 'kitchen' + (ids.length >= 5 ? ' three' : '');
-  run.stationEls = {};
-  for (const id of ids) {
-    const st = E.STATIONS[id], dish = E.DISHES[st.dish];
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'station';
-    b.dataset.station = id;
-    b.setAttribute('aria-label', `${st.name}: tap to cook or serve ${dish.name}`);
-    b.innerHTML = `<span class="st-name">${dish.emoji} ${st.name}</span><span class="slots"></span>`;
-    const slotsEl = b.querySelector('.slots');
-    const slotEls = shift.stations[id].slots.map(() => {
-      const s = document.createElement('span');
-      s.className = 'slot';
-      s.innerHTML = '<span></span>';
-      slotsEl.append(s);
-      return s;
-    });
-    b.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      tap(id);
-    });
-    b.addEventListener('click', event => {
-      if (event.detail === 0) tap(id); // (keyboard)
-    });
-    k.append(b);
-    run.stationEls[id] = { el: b, slots: slotEls };
-  }
-  if (ids.length < 5 && ids.length % 2 === 1) k.lastElementChild.classList.add('wide');
-  k.style.setProperty('--rows', String(Math.ceil(ids.length / (ids.length >= 5 ? 3 : 2))));
+  const bases = $('bases');
+  const ingredients = $('ingredients');
+  bases.replaceChildren();
+  ingredients.replaceChildren();
+  for (const id of shift.kitchen.bases) bases.append(stockButton('base', id, E.BASES[id].name));
+  for (const id of shift.kitchen.ingredients) ingredients.append(stockButton('add', id, E.INGREDIENTS[id].name));
+  ingredients.style.setProperty('--cols', Math.max(3, Math.min(6, shift.kitchen.ingredients.length)));
+  run.stations = buildStations();
 }
 
-function tap(id) {
-  if (!shift || shift.phase !== 'running' || run.paused) return;
+function buildGoals() {
+  const marks = $('goalMarks');
+  marks.replaceChildren();
+  $('goalbar').hidden = run.mode === 'speed';
+  $('servedCount').hidden = run.mode !== 'speed';
+  if (run.mode === 'speed') return;
+  const top = Math.max(1, shift.goal[2]) * 1.07;
+  for (const [index, value] of shift.goal.entries()) {
+    const mark = document.createElement('span');
+    mark.className = 'goal-mark';
+    mark.style.left = 100 * value / top + '%';
+    mark.textContent = '★';
+    mark.title = `${index + 1} star${index === 0 ? '' : 's'} at ${money(value)}`;
+    marks.append(mark);
+  }
+}
+
+function startShift() {
+  if (!pending || page !== 'intro') return;
+  const config = pending;
+  pending = null;
   F.unlock();
-  run.taps.push([shift.ticks, 'station', id, 0]);
-  E.tapStation(shift, id);
+  shift = E.createShift(config.spec);
+  run = {
+    ...config, actions: [], frame: 0, last: null, acc: 0, selected: -1,
+    guided: config.mode === 'day' && config.day === 1 && !save.guided, rushShown: false,
+    ticket: config.mode !== 'day' && config.key === activeKey(config.mode)
+      ? startRankedRun(config.mode, config.key) : Promise.resolve(null),
+  };
+  hintOverride = null;
+  $('awning').innerHTML = stall(save.decor);
+  $('fx').replaceChildren();
+  show('shift', run.title, run.key ?? '');
+  run.seats = buildSeats();
+  run.prep = buildCounter();
+  buildKitchen();
+  buildGoals();
+  F.musicStop();
+  F.sfx.start();
+  render();
+  run.frame = requestAnimationFrame(tick);
+  $('pause').focus({ preventScroll: true });
+}
+
+function playing() {
+  return run && shift?.phase === 'running' && !$('paused').open && !$('recipes').open && !document.hidden;
+}
+
+function tutorialWaiting() {
+  return run.guided && shift.next > 0 && shift.served === 0;
+}
+
+function tick(now) {
+  if (!run || shift.phase !== 'running') return;
+  if (playing()) {
+    const ticks = shift.ticks;
+    F.musicStart(false);
+    if (run.last !== null) run.acc += Math.min(0.25, (now - run.last) / 1000);
+    run.last = now;
+    while (run.acc >= E.TICK && shift.phase === 'running' && !tutorialWaiting()) {
+      E.step(shift);
+      run.acc -= E.TICK;
+    }
+    if (tutorialWaiting()) run.acc = 0;
+    if (ticks !== shift.ticks) {
+      render();
+      handleEvents();
+    }
+    if (shift.phase === 'over') {
+      finish();
+      return;
+    }
+  } else {
+    run.last = null;
+    run.acc = 0;
+  }
+  run.frame = requestAnimationFrame(tick);
+}
+
+function action(kind, a, b = -1) {
+  if (!playing()) return false;
+  const ok = E.act(shift, kind, a, b);
+  if (ok) {
+    run.actions.push([shift.ticks, kind, a, b]);
+    hintOverride = null;
+    if (run.guided && shift.served > 0) {
+      run.guided = false;
+      run.acc = 0;
+      run.last = null;
+      save.guided = true;
+      persist();
+      hintOverride = { text: 'First order served! Keep an eye on the next customers.', until: shift.t + 4 };
+    }
+    if ((kind === 'bin-dish' || kind === 'serve') && a === run.selected) run.selected = -1;
+  }
+  render();
   handleEvents();
+  renderHint();
+  return ok;
+}
+
+function useStock(kind, id) {
+  const selected = run.selected;
+  const canPlace = selected >= 0 && !shift.prep[selected];
+  const canAdd = selected >= 0 && shift.prep[selected];
+  if (kind === 'base') action('base', id, canPlace ? selected : -1);
+  else action('add', id, canAdd ? selected : -1);
+}
+
+function selectPrep(index) {
+  if (!playing()) return;
+  const dish = E.dishOf(shift.prep[index]);
+  if (run.selected === index && dish) {
+    action('serve', index);
+    return;
+  }
+  run.selected = run.selected === index ? -1 : index;
+  hintOverride = null;
   render();
 }
 
-function frame(now) {
-  if (!run) return;
-  const dt = Math.min(.1, (now - (run.last || now)) / 1000);
-  run.last = now;
-  if (!run.paused && !document.hidden) {
-    run.acc += dt;
-    while (run.acc >= E.TICK && shift.phase === 'running') {
-      E.step(shift);
-      run.acc -= E.TICK;
-      handleEvents();
-    }
-    render();
-    // the music: calm when quiet, faster when the counter is full or time is short
-    if (!F.musicPlaying()) F.musicStart();
-    const waiting = shift.seats.filter(c => c && !c.leaving).length;
-    F.musicRush(Math.max(E.SHIFT - shift.t < 15 ? 1 : 0, (waiting - 1) / 3, shift.queue.length ? .7 : 0));
-  }
-  if (shift.phase === 'over') {
-    finish();
+function serveSeat(index) {
+  if (!playing()) return;
+  const customer = shift.seats[index];
+  if (!customer || customer.leaving) return;
+  if (run.selected >= 0) {
+    action('serve', run.selected, index);
     return;
   }
-  run.raf = requestAnimationFrame(frame);
+  const match = shift.prep.findIndex(item => {
+    const dish = E.dishOf(item);
+    return dish && E.servingFor(shift, dish, index) === index;
+  });
+  if (match !== -1) action('serve', match, index);
+  else transient('Build a dish from this order first.');
+}
+
+function renderSeats() {
+  run.seats.forEach(({ el, orders, portrait, patience }, index) => {
+    const customer = shift.seats[index];
+    const waiting = Boolean(customer && !customer.leaving);
+    el.disabled = !waiting;
+    el.classList.toggle('empty', !customer);
+    el.classList.toggle('happy', customer?.leaving === 'happy');
+    el.classList.toggle('angry', customer?.leaving === 'angry');
+    if (!customer) {
+      el.setAttribute('aria-label', `Seat ${index + 1} empty`);
+      setContent(orders, '');
+      setContent(portrait, '<span class="stool"></span>');
+      patience.style.width = '0%';
+      return;
+    }
+    const remaining = customer.left / customer.patience;
+    const mood = customer.leaving === 'happy' ? 'eating' : customer.leaving || (remaining < .35 ? 'cross' : 'ok');
+    const wanted = customer.order.filter((_, i) => !customer.got[i]).map(id => E.DISHES[id].name);
+    const was = `${people[customer.who]} · seat ${index + 1}`;
+    el.setAttribute('aria-label', `${was}: ${waiting ? wanted.join(', ') : customer.leaving === 'happy' ? 'served' : 'leaving'}`);
+    setContent(orders, customer.order.map((id, i) => {
+      const dish = E.DISHES[id];
+      return `<span class="order${customer.got[i] ? ' done' : ''}">${Art.dish(dish.base, dish.has)}<span>${dish.name}</span></span>`;
+    }).join(''));
+    setContent(portrait, Art.person(customer.who, mood));
+    const mark = run.selected >= 0 ? E.dishOf(shift.prep[run.selected]) : null;
+    el.classList.toggle('eligible', Boolean(waiting && mark && E.servingFor(shift, mark, index) === index));
+    patience.style.width = `${Math.max(0, remaining) * 100}%`;
+    patience.dataset.state = remaining < .22 ? 'urgent' : remaining < .45 ? 'low' : '';
+  });
+}
+
+function renderPrep() {
+  run.prep.forEach(({ wrap, el, art, name, bin }, index) => {
+    const item = shift.prep[index];
+    const dish = E.dishOf(item);
+    const ready = Boolean(dish && E.servingFor(shift, dish) >= 0);
+    const label = dish ? E.DISHES[dish].name : item ? E.BASES[item.base].name : 'Empty';
+    const ingredients = item?.has.map(ing => E.INGREDIENTS[ing].name) ?? [];
+    wrap.classList.toggle('occupied', Boolean(item));
+    wrap.classList.toggle('selected', index === run.selected);
+    wrap.classList.toggle('ready', ready);
+    el.setAttribute('aria-pressed', String(index === run.selected));
+    el.setAttribute('aria-label', `Prep spot ${index + 1}: ${label}${ingredients.length ? ', ' + ingredients.join(', ') : ''}${ready ? ', ready to serve' : ''}`);
+    setContent(art, item ? Art.dish(item.base, item.has) : '<span class="prep-dash">+</span>');
+    setText(name, ready ? `${label} ✓` : label);
+    bin.hidden = !item;
+  });
+}
+
+function renderStations() {
+  for (const view of run.stations) {
+    const { id, el, art, cook, take, bin, meters, info } = view;
+    const slots = shift.stations[id].slots;
+    const count = { cooking: 0, ready: 0, burnt: 0, empty: 0 };
+    const shapes = slots.map((slot, index) => {
+      const state = slot?.state ?? 'empty';
+      count[state]++;
+      const p = slot ? E.progress(shift, id, slot) : 0;
+      meters[index].node.dataset.state = state;
+      meters[index].fill.style.width = `${p * 100}%`;
+      return slot ? { state, p: Math.round(p * 8) / 8 } : null;
+    });
+    const key = JSON.stringify(shapes);
+    if (key !== view.key) {
+      view.key = key;
+      art.innerHTML = Art.station(id, shapes);
+    }
+    el.classList.toggle('has-burnt', count.burnt > 0);
+    el.classList.toggle('has-ready', count.ready > 0);
+    cook.disabled = !count.empty;
+    take.disabled = !count.ready;
+    bin.disabled = !count.burnt;
+    setText(take, count.ready > 1 ? `Add ×${count.ready}` : 'Add');
+    const status = ['ready', 'burnt', 'cooking'].filter(state => count[state]).map(state => `${count[state]} ${state}`);
+    setText(info, status.length ? status.join(' · ') : `${count.empty} free`);
+  }
+}
+
+function clearGuide() {
+  for (const el of $('shift').querySelectorAll('.guide')) el.classList.remove('guide');
+}
+
+function tutorialHint() {
+  if (!shift.next) return 'Your first customer is on the way.';
+  const complete = shift.prep.findIndex(item => E.dishOf(item) === 'kopi');
+  if (complete >= 0) {
+    run.prep[complete].wrap.classList.add('guide');
+    run.seats[0].el.classList.add('guide');
+    return 'Serve the kopi. Drag it to the customer, or tap the customer.';
+  }
+  const cup = shift.prep.findIndex(item => item?.base === 'cup');
+  if (cup < 0) {
+    $('kitchen').querySelector('[data-stock="cup"]').classList.add('guide');
+    return 'Start with a cup. Tap Cup or drag it to an empty prep spot.';
+  }
+  const id = shift.prep[cup].has.includes('kopi') ? 'milk' : 'kopi';
+  $('kitchen').querySelector(`[data-stock="${id}"]`).classList.add('guide');
+  return `Add ${E.INGREDIENTS[id].name.toLowerCase()}. Tap it or drag it onto the cup.`;
+}
+
+function renderHint() {
+  clearGuide();
+  const guided = run.guided ? tutorialHint() : null;
+  const item = shift.prep[run.selected];
+  const dish = E.dishOf(item);
+  let message = 'Tap ingredients or drag them to your prep spots.';
+  if (run.selected >= 0) {
+    if (dish) message = `Tap a customer to serve ${E.DISHES[dish].name}, or tap the dish again to auto-serve.`;
+    else message = item ? 'Add an ingredient to the selected dish.' : 'Choose a cup, plate or bowl for this spot.';
+  }
+  if (shift.next >= shift.arrivals.length && !shift.queue.length && shift.seats.every(c => !c)) {
+    message = 'All customers have left. The stall closes when the clock ends.';
+  }
+  setText($('hint'), hintOverride && shift.t < hintOverride.until ? hintOverride.text : guided ?? message);
 }
 
 function render() {
-  const left = Math.max(0, E.SHIFT - shift.t);
-  const secs = Math.ceil(left);
-  const clock = $('clock');
-  clock.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-  clock.classList.toggle('late', left <= 10);
-  if (left <= 10 && secs !== run.lastSecond && secs > 0) F.sfx.tick();
-  run.lastSecond = secs;
-  $('money').textContent = money(shift.coins);
-  const top = shift.goal[2] * 1.05;
-  $('goalFill').style.width = Math.min(100, 100 * shift.coins / top) + '%';
-  [...$('goalMarks').children].forEach((m, i) => m.classList.toggle('got', shift.coins >= shift.goal[i]));
-  $('hudSub').textContent = `${shift.served} served · combo ${shift.combo}`;
-  // customers
-  shift.seats.forEach((c, i) => {
-    const el = run.seatEls[i];
-    const key = c ? `${c.id}:${c.leaving ?? ''}` : '';
-    if (run.seatKeys[i] !== key) {
-      run.seatKeys[i] = key;
-      el.className = 'seat' + (c ? (c.leaving ? ' ' + c.leaving : ' arrive') : ' empty');
-      el.innerHTML = c
-        ? `<div class="bubble">${c.order.map(d => `<span>${E.DISHES[d].emoji}</span>`).join('')}</div>` +
-          `<div class="face">${c.emoji}</div><span class="mood"></span><div class="patience"><div></div></div>`
-        : '<div class="face">🪑</div>';
-      el.setAttribute('aria-label', c ? `Customer wants ${c.order.map(d => E.DISHES[d].name).join(', ')}` : 'Empty seat');
-    }
-    if (!c) return;
-    const share = c.left / c.patience;
-    const bar = el.querySelector('.patience div');
-    if (bar) {
-      bar.style.width = (share * 100) + '%';
-      bar.style.background = share > .5 ? 'var(--green)' : share > .25 ? 'var(--gold)' : 'var(--red)';
-    }
-    const mood = el.querySelector('.mood');
-    if (mood) mood.textContent = c.leaving === 'happy' ? '😋' : c.leaving === 'angry' ? '😠' : share > .5 ? '😊' : share > .25 ? '😐' : '😤';
-    el.querySelectorAll('.bubble span').forEach((s, k) => s.classList.toggle('done', !!c.got[k]));
-  });
-  $('queue').textContent = shift.queue.length ? `👥 ${shift.queue.length} waiting in line` : '';
-  // kitchen
-  for (const [id, { el, slots }] of Object.entries(run.stationEls)) {
-    let ready = false, hot = false;
-    shift.stations[id].slots.forEach((item, i) => {
-      const s = slots[i];
-      const inner = s.firstChild;
-      if (!item) {
-        s.className = 'slot';
-        inner.textContent = '';
-        s.style.setProperty('--p', 0);
-        return;
-      }
-      const p = E.progress(shift, id, item);
-      if (item.state === 'burnt') {
-        s.className = 'slot burnt';
-        inner.textContent = '💨';
-        s.style.setProperty('--p', 0);
-      } else if (item.state === 'ready') {
-        const burns = E.STATIONS[id].burn !== null;
-        s.className = 'slot ready' + (burns && p > .5 ? ' hot' : '');
-        inner.textContent = E.DISHES[item.dish].emoji;
-        s.style.setProperty('--p', burns ? 1 - p : 1);
-        ready = true;
-        hot ||= burns && p > .5;
-      } else {
-        s.className = 'slot cooking';
-        inner.textContent = E.DISHES[item.dish].emoji;
-        s.style.setProperty('--p', p);
-      }
-    });
-    el.classList.toggle('ready', ready && E.servingFor(shift, E.STATIONS[id].dish) >= 0);
-    el.classList.toggle('burning', hot);
+  setText($('money'), money(shift.coins));
+  const time = run.mode === 'speed' ? shift.t : Math.max(0, Math.ceil(E.SHIFT - shift.t));
+  setText($('clock'), duration(time));
+  $('clock').classList.toggle('late', run.mode !== 'speed' && time <= 10);
+  $('clock').setAttribute('aria-label', `${run.mode === 'speed' ? 'Elapsed' : 'Time left'} ${duration(time)}`);
+  if (run.mode === 'speed') {
+    setText($('servedCount'), `${shift.served} / ${E.SPEED_CUSTOMERS} served`);
+  } else {
+    $('goalFill').style.width = `${Math.min(100, 100 * shift.coins / (Math.max(1, shift.goal[2]) * 1.07))}%`;
+    for (const [index, mark] of [...$('goalMarks').children].entries()) mark.classList.toggle('got', shift.coins >= shift.goal[index]);
   }
-  guide();
+  const queued = shift.queue.length;
+  const queue = queued ? `${queued} waiting` : shift.next < shift.arrivals.length ? 'Customers are on the way' : 'Last orders';
+  setText($('queue'), queue + (shift.combo > 1 ? ` · ${shift.combo}× combo` : ''));
+  renderSeats();
+  renderPrep();
+  renderStations();
+  renderHint();
+  F.musicRush(Math.max(shift.seats.filter(c => c && !c.leaving).length / E.SEATS, run.mode !== 'speed' && time <= 10 ? 1 : 0));
 }
 
-/** Day 1 (and new dishes): show what to do next. */
-function guide() {
-  const hint = $('hint');
-  let text = '', lead = null;
-  if (run.mode === 'day' && run.dayNumber === 1 && shift.served < 2) {
-    const kopi = shift.stations.kopi.slots;
-    const someone = shift.seats.some(c => c && !c.leaving);
-    if (!someone) text = 'Customers are coming…';
-    else if (kopi.some(it => it && it.state === 'ready')) { text = '👆 Ready! Tap ☕ Kopi again to serve it'; lead = 'kopi'; }
-    else if (kopi.some(it => it && it.state === 'cooking')) text = 'Brewing… nearly ready';
-    else { text = '👆 Tap ☕ Kopi to brew a kopi'; lead = 'kopi'; }
-  } else if (run.mode === 'day' && run.dayNumber === 1 && shift.served < 4) {
-    text = 'Faster service = bigger tips 💰';
-  } else if (shift.t < 6 && run.mode === 'day' && E.newDishOn(run.dayNumber)) {
-    const d = E.newDishOn(run.dayNumber);
-    text = `New: ${E.DISHES[d].emoji} ${E.DISHES[d].name}!` + (E.STATIONS[d].burn ? ' Serve it before it burns 🔥' : '');
+function transient(text) {
+  hintOverride = { text, until: shift.t + 3 };
+  renderHint();
+}
+
+function float(text, anchor, tone = '') {
+  if (!anchor || !run) return;
+  const rect = anchor.getBoundingClientRect();
+  const node = document.createElement('span');
+  node.textContent = text;
+  node.className = `pop ${tone}`;
+  node.style.left = rect.left + rect.width / 2 + 'px';
+  node.style.top = rect.top + rect.height / 3 + 'px';
+  $('fx').append(node);
+  window.setTimeout(() => node.remove(), 1000);
+}
+
+/** Coins fly from the customer to your money. */
+function coins(from, n) {
+  if (!from || !run) return;
+  const a = from.getBoundingClientRect(), b = $('money').getBoundingClientRect();
+  for (let k = 0; k < Math.min(8, n); k++) {
+    const c = document.createElement('span');
+    c.className = 'coin';
+    c.style.left = a.left + a.width / 2 - 17 + (k % 3) * 8 + 'px';
+    c.style.top = a.top + a.height / 3 - Math.floor(k / 3) * 6 + 'px';
+    document.body.append(c);
+    window.setTimeout(() => {
+      c.style.left = b.left + b.width / 2 - 9 + 'px';
+      c.style.top = b.top + b.height / 2 - 9 + 'px';
+      c.style.opacity = '.3';
+    }, 30 + k * 45);
+    window.setTimeout(() => c.remove(), 750 + k * 45);
   }
-  if (hint.textContent !== text) hint.textContent = text;
-  hint.classList.toggle('point', !!lead);
-  for (const [id, { el }] of Object.entries(run.stationEls)) el.classList.toggle('lead', id === lead);
 }
 
-function floater(text, kind, anchor) {
-  const box = $('shift').getBoundingClientRect();
-  const r = anchor.getBoundingClientRect();
-  const f = document.createElement('div');
-  f.className = 'float ' + kind;
-  f.textContent = text;
-  f.style.left = (r.left + r.width / 2 - box.left) + 'px';
-  f.style.top = (r.top - box.top + 10) + 'px';
-  $('floaters').append(f);
-  setTimeout(() => f.remove(), 1000);
-}
-
-function banner(text) {
+function banner(text, tone = '') {
   const b = document.createElement('div');
-  b.className = 'banner';
+  b.className = 'banner ' + tone;
   b.textContent = text;
-  $('floaters').append(b);
-  setTimeout(() => b.remove(), 1200);
+  document.body.append(b);
+  window.setTimeout(() => b.remove(), 1300);
 }
 
 function handleEvents() {
-  for (const e of shift.events) {
-    const seatEl = e.seat !== undefined ? run.seatEls[e.seat] : null;
-    const stEl = e.station ? run.stationEls[e.station]?.el : null;
-    switch (e.type) {
-      case 'cook': F.sfx.cook(); break;
-      case 'ready': F.sfx.ready(); break;
-      case 'serve': F.sfx.serve(); break;
-      case 'paid':
-        F.sfx.paid(e.combo);
-        floater('+' + money(e.amount), 'money', seatEl);
-        if (e.combo >= 3) floater(`Combo ×${e.combo}!`, 'combo', $('money'));
-        break;
+  for (const event of shift.events.splice(0)) {
+    const seat = run.seats[event.seat]?.el;
+    const station = run.stations.find(view => view.id === event.station)?.el;
+    const spot = run.prep[event.spot]?.wrap;
+    switch (event.type) {
       case 'arrive':
         F.sfx.arrive();
-        if (!run.rushShown && shift.seats.every(Boolean) && shift.t > 10) {
+        if (!run.rushShown && shift.seats.every(c => c && !c.leaving)) {
           run.rushShown = true;
-          banner('RUSH HOUR!');
+          banner('Rush hour!', 'bad');
         }
         break;
-      case 'angry': F.sfx.angry(); floater('😠 Left!', 'bad', seatEl); break;
-      case 'burnt': F.sfx.burnt(); floater('Burnt!', 'bad', stEl); break;
-      case 'trash': F.sfx.trash(); floater('-' + money(E.BURNT_COST), 'bad', stEl); break;
-      case 'nobody': F.sfx.nope(); floater('Nobody wants that yet', 'bad', stEl); stEl?.classList.add('nope'); setTimeout(() => stEl?.classList.remove('nope'), 300); break;
-      case 'full': F.sfx.nope(); stEl?.classList.add('nope'); setTimeout(() => stEl?.classList.remove('nope'), 300); break;
-      case 'passed': floater('Walked past…', 'bad', $('queue')); break;
+      case 'base': F.sfx.base(); break;
+      case 'add':
+        F.sfx.add(E.INGREDIENTS[event.ingredient]?.base === 'cup' && event.ingredient !== 'ice');
+        if (event.dish) float(E.DISHES[event.dish].name + ' ✓', spot, 'good');
+        break;
+      case 'cook': F.sfx.cook(); break;
+      case 'ready': F.sfx.ready(); float('Ready!', station, 'good'); break;
+      case 'serve': F.sfx.serve(); break;
+      case 'paid':
+        F.sfx.paid(event.combo);
+        float('+' + money(event.amount), seat, 'good');
+        coins(seat, Math.ceil(event.amount));
+        if (event.perfect) window.setTimeout(() => float('Perfect!', seat, 'good'), 300);
+        if ([5, 10, 15, 20].includes(event.combo)) banner(`Combo ×${event.combo}!`);
+        break;
+      case 'angry': F.sfx.angry(); float('Left!', seat, 'bad'); break;
+      case 'burnt': F.sfx.burnt(); float('Burnt!', station, 'bad'); break;
+      case 'bin-burnt': F.sfx.trash(); float('Binned', station, 'bad'); break;
+      case 'bin-dish': F.sfx.trash(); float('Binned', spot, 'bad'); break;
+      case 'counter-full': F.sfx.nope(); transient('Pick an empty prep spot first.'); break;
+      case 'station-full': F.sfx.nope(); transient('That station is full. Use or bin a finished batch.'); break;
+      case 'wrong': F.sfx.nope(); transient('No matching spot. Check the base and ingredients.'); break;
+      case 'not-ready': F.sfx.nope(); transient('This dish needs more ingredients.'); break;
+      case 'not-wanted': F.sfx.nope(); transient('This dish does not match that order.'); break;
+      case 'passed': float('Walked past', $('queue'), 'bad'); break;
       case 'over': F.sfx.bell(); break;
     }
   }
-  shift.events.length = 0;
 }
 
-// ---------------------------------------------------------------------------------------------------- after a shift
+function bindDrag(source, getItem) {
+  source.addEventListener('pointerdown', event => {
+    suppressClick = null;
+    if (!playing() || !event.isPrimary || event.button !== 0) return;
+    const item = getItem();
+    if (!item) return;
+    drag = { ...item, source, pointer: event.pointerId, x: event.clientX, y: event.clientY };
+    source.setPointerCapture(event.pointerId);
+  });
+}
+
+function dropTarget(event) {
+  const node = document.elementFromPoint(event.clientX, event.clientY);
+  if (!node || !drag) return null;
+  if (drag.kind === 'dish') {
+    const seat = node.closest('[data-seat]');
+    return seat && !seat.disabled && drag.canServe ? seat : null;
+  }
+  return node.closest('[data-prep]');
+}
+
+function clearDrag() {
+  if (!drag) return;
+  if (drag.source.hasPointerCapture(drag.pointer)) drag.source.releasePointerCapture(drag.pointer);
+  drag.target?.classList.remove('drop-target');
+  drag.ghost?.remove();
+  drag = null;
+}
+
+window.addEventListener('pointermove', event => {
+  if (event.pointerId !== drag?.pointer) return;
+  if (!drag.ghost) {
+    if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 8) return;
+    drag.ghost = document.createElement('div');
+    drag.ghost.className = 'drag-ghost';
+    drag.ghost.setAttribute('aria-hidden', 'true');
+    drag.ghost.innerHTML = drag.html;
+    document.body.append(drag.ghost);
+  }
+  drag.ghost.style.left = event.clientX + 'px';
+  drag.ghost.style.top = event.clientY + 'px';
+  const target = dropTarget(event);
+  if (target !== drag.target) {
+    drag.target?.classList.remove('drop-target');
+    target?.classList.add('drop-target');
+    drag.target = target;
+  }
+});
+window.addEventListener('pointerup', event => {
+  if (event.pointerId !== drag?.pointer) return;
+  if (drag.ghost) {
+    suppressClick = drag.source;
+    const target = dropTarget(event);
+    if (target) {
+      if (drag.kind === 'dish') action('serve', drag.value, Number(target.dataset.seat));
+      else action(drag.kind, drag.value, Number(target.dataset.prep));
+    }
+  }
+  clearDrag();
+});
+window.addEventListener('pointercancel', event => {
+  if (event.pointerId === drag?.pointer) clearDrag();
+});
+document.addEventListener('pointerdown', () => { suppressClick = null; }, true);
+document.addEventListener('click', event => {
+  if (suppressClick && event.detail > 0 && suppressClick.contains(event.target)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    suppressClick = null;
+  }
+}, true);
+
+function putRecord(mode, key, value) {
+  const records = save.records[mode];
+  const old = records[key];
+  const improved = old === undefined || (mode === 'speed' ? value < old : value > old);
+  if (!improved) return false;
+  records[key] = value;
+  const retained = Object.keys(records).sort().reverse().slice(0, 40);
+  for (const period of Object.keys(records)) {
+    if (!retained.includes(period)) delete records[period];
+  }
+  return true;
+}
+
 function finish() {
-  const done = run;
-  const stars = E.starsFor(shift.coins, shift.goal);
-  cancelAnimationFrame(done.raf);
+  clearDrag();
   F.musicStop();
-  setTimeout(() => F.sfx.stars(stars), 300);
+  const stars = E.starsFor(shift.coins, shift.goal);
+  const time = E.speedTime(shift);
+  const value = cents(run.mode === 'speed' ? time : shift.coins);
+  const newBest = run.mode !== 'day' && shift.served > 0 && value > 0 && putRecord(run.mode, run.key, value);
+  const summary = {
+    coins: shift.coins, tips: shift.tips, served: shift.served, lost: shift.lost,
+    passed: shift.passed, burnt: shift.burnt, wasted: shift.wasted, stars, time, ticks: shift.ticks,
+  };
+  result = {
+    mode: run.mode, title: run.title, day: run.day, key: run.key, spec: run.spec, actions: run.actions,
+    ticketPromise: run.ticket, challenge: run.challenge, value, newBest, summary,
+  };
   save.totals.served += shift.served;
   save.totals.shifts++;
-  const next = $('resNext'), shareBtn = $('resShare');
-  let title = 'Shift over!';
-  if (done.mode === 'day') {
-    const d = done.dayNumber;
-    save.wallet = Math.round((save.wallet + shift.coins) * 100) / 100;
-    save.best[d] = Math.max(save.best[d] ?? 0, stars);
-    if (stars >= 1 && d === save.day) save.day = d + 1;
-    title = stars ? (d === E.DAYS && stars ? 'You finished the story! 🎉' : `Day ${d} done!`) : 'Not enough this time…';
-    next.hidden = stars < 1;
-    next.textContent = `Day ${d + 1} ▶`;
-    shareBtn.hidden = true;
-  } else {
-    const today = E.daily();
-    if (save.daily.key !== today.key || shift.coins > (save.daily.best ?? 0)) {
-      save.daily = { key: today.key, best: shift.coins, stars, number: today.number };
-    }
-    title = `Daily Rush #${today.number}`;
-    next.hidden = true;
-    shareBtn.hidden = false;
+  if (run.mode === 'day') {
+    save.wallet = (cents(save.wallet) + cents(shift.coins)) / 100;
+    save.best[run.day] = Math.max(save.best[run.day] ?? 0, stars);
+    if (stars && run.day === save.day && save.day < Number.MAX_SAFE_INTEGER - 1) save.day++;
   }
   persist();
-  $('resTitle').textContent = title;
-  $('resStars').textContent = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
-  $('resMoney').textContent = `Earned ${money(shift.coins)}` + (done.mode === 'day' ? ` · wallet ${money(save.wallet)}` : '');
-  const rows = [
-    ['😋 Served', shift.served],
-    ['😠 Left angry', shift.lost],
-    ['🚶 Walked past', shift.passed],
-    ['💰 Tips and combos', money(shift.tips)],
-    ['🔥 Best combo', shift.bestCombo],
-    ['💨 Burnt', shift.burnt],
-  ];
-  if (stars < 3) rows.push(['Next star at', money(shift.goal[stars])]);
-  $('resList').innerHTML = rows.map(([a, b]) => `<li><span>${a}</span><b>${b}</b></li>`).join('');
-  $('results').hidden = false;
-  run.lastShift = shift;
+  F.sfx.stars(run.mode === 'speed' ? (shift.served === E.SPEED_CUSTOMERS ? 3 : 0) : stars);
+  renderResults();
+  openDialog('results');
+  updateTicket(result);
 }
 
-async function shareDaily() {
-  const d = save.daily;
-  const text = `Hawker Rush daily #${d.number} 🍜\n${'⭐'.repeat(d.stars)}${'☆'.repeat(3 - d.stars)} ${money(d.best)} earned\n` +
-    location.href.split('#')[0];
+function renderResults() {
+  const done = result;
+  const { mode, summary, value, day } = done;
+  const { stars, coins, tips, served, lost, passed, burnt, wasted } = summary;
+  const story = mode === 'day';
+  $('resTitle').textContent = story
+    ? (day === E.DAYS && stars ? 'Story complete!' : stars ? `${done.title} complete` : `${done.title} results`)
+    : done.title;
+  $('resStars').hidden = mode === 'speed';
+  $('resStars').textContent = starsText(stars);
+  $('resStars').setAttribute('aria-label', `${stars} out of 3 stars`);
+  $('resMoney').textContent = mode === 'speed' ? scoreText(mode, value) : money(coins) + ' earned';
+  $('resRecord').textContent = done.newBest ? 'New personal best' : '';
+  $('resRecord').hidden = !done.newBest;
+  const rows = [['Customers served', served], ['Left or walked past', lost + passed]];
+  if (mode === 'speed' && lost + passed) rows.push(['Time penalty', `+${10 * (lost + passed)} s`]);
+  rows.push(['Tips and combos', money(tips)]);
+  if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
+  if (burnt) rows.push(['Food burnt', burnt]);
+  if (wasted) rows.push(['Dishes binned', wasted]);
+  if (story) rows.push(['Wallet', money(save.wallet)]);
+  if (mode !== 'speed' && stars < 3) rows.push(['Next star', money(shift.goal[stars])]);
+  if (done.challenge) {
+    const diff = value - done.challenge.value;
+    const beat = mode === 'speed' ? diff < 0 : diff > 0;
+    rows.push(['Friend’s target', scoreText(mode, done.challenge.value)]);
+    rows.push(['Challenge', diff === 0 ? 'Tied' : beat ? 'Target beaten!' : 'Target still open']);
+  }
+  $('resList').innerHTML = rows.map(([label, amount]) => `<li><span>${label}</span><b>${amount}</b></li>`).join('');
+  $('resNext').hidden = !story || day >= save.day;
+  $('resNext').textContent = day + 1 > E.DAYS ? 'Play the next endless day' : `Play day ${day + 1}`;
+  $('resChallenge').hidden = story;
+  $('resShop').hidden = !story;
+  $('resRetry').textContent = story ? 'Replay day' : 'Play again';
+  $('saveScore').hidden = true;
+  $('saveBtn').disabled = false;
+  $('name').disabled = false;
+  $('name').value = save.nickname;
+  $('saveNote').textContent = '';
+  $('shareNote').textContent = '';
+  $('shareLink').hidden = true;
+  $('rankNotice').textContent = '';
+  $('rankNotice').hidden = true;
+}
+
+async function updateTicket(done) {
+  if (done.mode === 'day') return;
+  const notice = $('rankNotice');
+  notice.hidden = false;
+  if (!done.summary.served || !done.value) {
+    notice.textContent = 'Serve at least one customer and finish with a positive score to rank.';
+    return;
+  }
+  if (done.key !== activeKey(done.mode)) {
+    notice.textContent = 'This shift’s leaderboard period has ended.';
+    return;
+  }
+  notice.textContent = 'Checking leaderboard availability…';
+  done.ranked = await done.ticketPromise;
+  if (done !== result) return;
+  if (!done.ranked) {
+    notice.textContent = 'Leaderboard unavailable. Your personal best is saved on this device.';
+    return;
+  }
+  notice.hidden = true;
+  $('saveScore').hidden = false;
+}
+
+async function saveScore(event) {
+  event.preventDefault();
+  const done = result;
+  if (!done?.ranked) return;
+  const name = $('name').value.trim();
+  if (!name) {
+    $('saveNote').textContent = 'Enter a name to save this score.';
+    $('name').focus();
+    return;
+  }
+  const button = $('saveBtn');
+  button.disabled = true;
+  $('saveNote').textContent = 'Saving…';
   try {
-    if (navigator.share) await navigator.share({ text });
-    else {
-      await navigator.clipboard.writeText(text);
-      $('resShare').textContent = 'Copied! Paste it to your friends';
-    }
-  } catch {
-    // (share sheet closed)
+    const response = await submitScore({
+      ...done.ranked, name, actions: done.actions, value: done.value,
+    });
+    save.nickname = name;
+    persist();
+    if (done !== result) return;
+    $('saveNote').textContent = response.saved ? 'Score saved to the leaderboard.' : 'This score did not qualify for the leaderboard.';
+    $('name').disabled = true;
+  } catch (error) {
+    if (done !== result) return;
+    $('saveNote').textContent = error.message || 'Could not save this score. Try again.';
+    button.disabled = false;
   }
 }
 
-// ---------------------------------------------------------------------------------------------------- shop
-function shop() {
-  stopShift();
-  $('results').hidden = true;
-  show('shop');
-  $('hudTitle').textContent = 'Shop';
-  $('hudSub').textContent = '';
+async function shareChallenge() {
+  const done = result;
+  if (!done || done.mode === 'day') return;
+  const url = challengeUrl(done, location.href);
+  const text = `Can you beat ${scoreText(done.mode, done.value)} in ${done.title}?`;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'Hawker Rush', text, url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    if (done === result) $('shareNote').textContent = 'Challenge link copied.';
+  } catch (error) {
+    if (done !== result || error.name === 'AbortError') return;
+    const field = $('shareLink');
+    field.value = url;
+    field.hidden = false;
+    field.select();
+    $('shareNote').textContent = 'Copy this link to share your challenge.';
+  }
+}
+
+function buyItem(list, item, cost, owned, purchase, level) {
+  const row = document.createElement('div');
+  row.className = 'shop-item';
+  const info = document.createElement('div');
+  const title = document.createElement('strong');
+  title.textContent = item.name;
+  const description = document.createElement('small');
+  description.textContent = item.what ?? 'Changes the look of your stall';
+  info.append(title, description);
+  if (level) {
+    const lv = document.createElement('small');
+    lv.textContent = level;
+    info.append(lv);
+  }
+  const el = button(owned ?? money(cost), 'small-btn');
+  el.disabled = owned !== null || save.wallet < cost;
+  if (!owned) el.setAttribute('aria-label', `Buy ${item.name} for ${money(cost)}`);
+  el.addEventListener('click', () => {
+    if (el.disabled || save.wallet < cost) return;
+    save.wallet = (cents(save.wallet) - cents(cost)) / 100;
+    purchase();
+    persist();
+    F.sfx.buy();
+    el.disabled = true;
+    showShopItems();
+    focusHeading($('shopTitle'));
+  });
+  row.append(info, el);
+  list.append(row);
+}
+
+function showShopItems() {
   $('shopWallet').textContent = money(save.wallet);
   const list = $('shopList');
   list.replaceChildren();
-  for (const [id, u] of Object.entries(E.UPGRADES)) {
-    const lv = save.upgrades[id] ?? 0;
-    const cost = E.upgradeCost(id, lv);
-    const row = document.createElement('div');
-    row.className = 'shop-item';
-    row.innerHTML = `<span class="em">${u.emoji}</span><span class="what"><b>${u.name}</b><small>${u.what}</small>` +
-      `<span class="lv">Level ${lv} of ${u.costs.length}</span></span>`;
-    const b = document.createElement('button');
-    b.type = 'button';
-    if (cost === null) {
-      b.textContent = 'Max';
-      b.className = 'owned';
-      b.disabled = true;
-    } else {
-      b.textContent = money(cost);
-      b.disabled = save.wallet < cost;
-      b.addEventListener('click', () => {
-        if (save.wallet < cost) return;
-        save.wallet = Math.round((save.wallet - cost) * 100) / 100;
-        save.upgrades[id] = lv + 1;
-        persist();
-        F.sfx.buy();
-        shop();
-      });
-    }
-    row.append(b);
-    list.append(row);
+  for (const [id, item] of Object.entries(E.UPGRADES)) {
+    const level = save.upgrades[id] ?? 0;
+    const cost = E.upgradeCost(id, level);
+    buyItem(list, item, cost, cost === null ? 'Max level' : null,
+      () => { save.upgrades[id] = level + 1; }, `Level ${level} of ${item.costs.length}`);
   }
   const decor = $('decorList');
   decor.replaceChildren();
-  for (const [id, d] of Object.entries(E.DECOR)) {
-    const row = document.createElement('div');
-    row.className = 'shop-item';
-    row.innerHTML = `<span class="em">${d.emoji}</span><span class="what"><b>${d.name}</b><small>Shown on your stall</small></span>`;
-    const b = document.createElement('button');
-    b.type = 'button';
-    if (save.decor[id]) {
-      b.textContent = 'Owned';
-      b.className = 'owned';
-      b.disabled = true;
-    } else {
-      b.textContent = money(d.cost);
-      b.disabled = save.wallet < d.cost;
-      b.addEventListener('click', () => {
-        if (save.wallet < d.cost) return;
-        save.wallet = Math.round((save.wallet - d.cost) * 100) / 100;
-        save.decor[id] = true;
-        persist();
-        F.sfx.buy();
-        shop();
-      });
-    }
-    row.append(b);
-    decor.append(row);
+  for (const [id, item] of Object.entries(E.DECOR)) {
+    buyItem(decor, item, item.cost, save.decor[id] ? 'Owned' : null,
+      () => { save.decor[id] = true; });
   }
 }
 
-// ---------------------------------------------------------------------------------------------------- pause
-function setPaused(p) {
-  if (!run || !shift || shift.phase !== 'running') return;
-  run.paused = p;
-  $('paused').hidden = !p;
-  F.musicPause(p);
-  run.last = 0;
+function shop(from = 'home') {
+  shopReturn = from;
+  closeDialog('results');
+  show('shop', 'Shop');
+  showShopItems();
+  focusHeading($('shopTitle'));
 }
+
+async function boards(mode = boardMode) {
+  if (page !== 'boards') {
+    show('boards', 'Leaderboards');
+    focusHeading($('boardsTitle'));
+  }
+  boardMode = mode;
+  const key = activeKey(mode);
+  const request = ++boardRequest;
+  for (const tab of $('boards').querySelectorAll('[data-board]')) {
+    tab.setAttribute('aria-pressed', String(tab.dataset.board === mode));
+  }
+  const list = $('boardList');
+  list.replaceChildren();
+  $('boardInfo').textContent = mode === 'speed' ? `Week of ${key} · fastest time` : `${key} · most earned`;
+  $('boardNote').textContent = 'Loading…';
+  try {
+    const board = await readBoard(mode, key);
+    if (request !== boardRequest || page !== 'boards') return;
+    for (const entry of board.entries) {
+      const node = document.createElement('li');
+      const name = document.createElement('span');
+      name.textContent = entry.name;
+      const score = document.createElement('b');
+      score.textContent = scoreText(mode, entry.value);
+      node.append(name, score);
+      list.append(node);
+    }
+    $('boardNote').textContent = board.entries.length ? '' : 'No scores yet.';
+  } catch (error) {
+    if (request === boardRequest && page === 'boards') {
+      const personal = save.records[mode][key];
+      $('boardNote').textContent = (error.message || 'Leaderboard unavailable.') +
+        (personal === undefined ? '' : ` Your best here is ${scoreText(mode, personal)}.`);
+    }
+  }
+}
+
+function openBook() {
+  if ($('results').open) return;
+  const showDay = page === 'shift' ? shift.day : page === 'intro' ? pending.spec.day : E.DAYS;
+  $('recipeList').innerHTML = E.menuFor(showDay).map(recipeCard).join('');
+  clearDrag();
+  if (page === 'shift') F.musicPause(true);
+  openDialog('recipes');
+}
+
+function pause() {
+  if (page !== 'shift' || shift?.phase !== 'running' || $('paused').open || $('recipes').open) return;
+  clearDrag();
+  F.musicPause(true);
+  openDialog('paused');
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) setPaused(true); // (switched apps: wait for the player)
+  if (document.hidden) pause();
+});
+$('recipes').addEventListener('close', () => {
+  if (!$('paused').open && page === 'shift') F.musicPause(false);
+});
+$('paused').addEventListener('close', () => {
+  if (!$('recipes').open) F.musicPause(false);
+});
+$('results').addEventListener('cancel', event => {
+  event.preventDefault();
+  home();
 });
 
-// ---------------------------------------------------------------------------------------------------- buttons
-$('play').addEventListener('click', () => intro('day', save.day));
-$('openDaily').addEventListener('click', () => intro('daily'));
-$('openShop').addEventListener('click', shop);
+$('play').addEventListener('click', () => prepare('day', save.day));
+$('openDaily').addEventListener('click', () => prepare('daily'));
+$('openSpeed').addEventListener('click', () => prepare('speed'));
+$('openShop').addEventListener('click', () => shop());
+$('openBoards').addEventListener('click', () => boards());
 $('startShift').addEventListener('click', startShift);
-$('introBack').addEventListener('click', home);
-$('resNext').addEventListener('click', () => {
-  $('results').hidden = true;
-  intro('day', save.day);
+$('introBack').addEventListener('click', () => home());
+$('resNext').addEventListener('click', () => prepare('day', result.day + 1));
+$('resRetry').addEventListener('click', () => prepare(result.mode, result.day, result.challenge, result.mode === 'day' ? null : result));
+$('resShop').addEventListener('click', () => shop('results'));
+$('resHome').addEventListener('click', () => home());
+$('resChallenge').addEventListener('click', shareChallenge);
+$('saveScore').addEventListener('submit', saveScore);
+$('shopBack').addEventListener('click', () => {
+  if (shopReturn === 'results') {
+    show('shift', result.title, result.key ?? '');
+    renderResults();
+    openDialog('results');
+  } else {
+    home();
+  }
 });
-$('resRetry').addEventListener('click', () => {
-  $('results').hidden = true;
-  if (run?.mode === 'daily') intro('daily');
-  else intro('day', run?.dayNumber ?? save.day);
-});
-$('resShop').addEventListener('click', shop);
-$('resHome').addEventListener('click', () => {
-  $('results').hidden = true;
-  home();
-});
-$('resShare').addEventListener('click', shareDaily);
-$('shopBack').addEventListener('click', home);
-$('pause').addEventListener('click', () => setPaused(true));
-$('resume').addEventListener('click', () => setPaused(false));
-$('quit').addEventListener('click', () => {
-  $('paused').hidden = true;
-  F.musicStop();
-  home();
-});
-for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+$('pause').addEventListener('click', pause);
+$('resume').addEventListener('click', () => closeDialog('paused'));
+$('quit').addEventListener('click', () => home());
+$('book').addEventListener('click', openBook);
+$('pausedRecipes').addEventListener('click', openBook);
+$('recipesClose').addEventListener('click', () => closeDialog('recipes'));
+$('boardsBack').addEventListener('click', () => home());
+$('boardRefresh').addEventListener('click', () => boards());
+for (const tab of $('boards').querySelectorAll('[data-board]')) tab.addEventListener('click', () => boards(tab.dataset.board));
+
+function showSound() {
+  const muted = F.isMuted();
+  $('sound').textContent = muted ? '🔇' : '🔊';
+  $('sound').setAttribute('aria-label', muted ? 'Turn sound on' : 'Turn sound off');
+}
+
+for (const type of ['pointerup', 'click', 'keydown']) {
   window.addEventListener(type, () => {
     F.unlock();
-    // (the calm home music starts after the first tap)
-    if (!run && !F.musicPlaying()) setTimeout(() => !run && F.musicStart(true), 50);
+    if (page !== 'shift') F.musicStart(true);
   }, { capture: true, passive: true });
 }
-const soundBtn = $('sound');
-function showSound() {
-  const off = F.isMuted();
-  soundBtn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>' +
-    (off ? '<path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'
-      : '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>') +
-    '</svg>';
-  soundBtn.setAttribute('aria-label', off ? 'Sound off' : 'Sound on');
-}
-soundBtn.addEventListener('click', () => {
-  F.unlock();
+$('sound').addEventListener('click', () => {
   F.setMuted(!F.isMuted());
   showSound();
 });
 showSound();
-home();
+const challenge = parseChallenge(location.href);
+if (challenge) prepare(challenge.mode, challenge.spec.day, challenge);
+else home({ focus: false });

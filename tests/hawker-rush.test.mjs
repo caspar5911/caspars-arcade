@@ -1,173 +1,211 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BURNT_COST, DAYS, DECOR, DISHES, SEATS, SHIFT, STATIONS, TICK, UPGRADES, cook, createShift, daily, dayKey, goals,
-  menuFor, newDishOn, progress, replay, schedule, servingFor, starsFor, step, tapSlot, tapStation, upgradeCost,
+  TICK, SEATS, QUEUE_MAX, DAYS, SHIFT, SPEED_CUSTOMERS, PREP, BURNT_COST, WASTE_COST,
+  DISHES, INGREDIENTS, STATIONS, UPGRADES, DECOR, menuFor, newOn, kitchenFor, schedule,
+  goals, starsFor, createShift, dishOf, couldBe, placeBase, addIngredient, cook, binBurnt,
+  binDish, serve, servingFor, step, progress, speedTime, act, replay, daily, dayKey, speedRun, upgradeCost,
 } from '../games/hawker-rush/public/engine.mjs';
 
-const seconds = (shift, s) => {
-  for (let i = 0; i < Math.round(s / TICK); i++) step(shift);
-};
-
-/** A shift with one customer (who orders `order`) sitting at the first seat, and nobody else coming. */
-function withCustomer(order, { day = 9, upgrades = {} } = {}) {
-  const s = createShift({ day, seed: 'test', upgrades });
-  s.arrivals = [{ id: 0, at: 0, who: 'uncle', emoji: '👴', order, patience: 30 }];
+function advance(s, seconds) {
+  for (let i = 0; i < Math.ceil(seconds / TICK); i++) step(s);
+}
+function customers(orders, options = {}) {
+  const s = createShift({ day: 9, seed: 'test', ...options });
+  s.arrivals = orders.map((order, id) => ({ id, at: 0, who: 'uncle', order, patience: 60 - id * 5 }));
   s.next = 0;
   step(s);
   return s;
 }
-
-test('the menu grows day by day, a new dish is introduced on its day, every dish has a station', () => {
-  assert.deepEqual(menuFor(1), ['kopi']);
-  assert.deepEqual(menuFor(2), ['kopi', 'toast']);
-  assert.equal(menuFor(9).length, Object.keys(DISHES).length);
-  assert.equal(newDishOn(7), 'rice');
-  assert.equal(newDishOn(8), null);
-  for (const d of Object.keys(DISHES)) assert.equal(STATIONS[d].dish, d);
-});
-
-test('a shift is the same for the same seed, different for another, and busier on later days', () => {
-  assert.deepEqual(schedule(5, 'a'), schedule(5, 'a'));
-  assert.notDeepEqual(schedule(5, 'a'), schedule(5, 'b'));
-  assert.ok(schedule(12, 'x').length > schedule(3, 'x').length);
-  for (const p of schedule(12, 'x')) {
-    assert.ok(p.order.every(d => menuFor(12).includes(d)), 'only what is on the menu');
-    assert.ok(p.at >= 0 && p.at <= 76);
+function build(s, dish) {
+  const recipe = DISHES[dish];
+  const target = s.prep.indexOf(null);
+  assert.equal(placeBase(s, recipe.base, target), true);
+  for (const ingredient of recipe.has) {
+    const station = INGREDIENTS[ingredient].cooked;
+    if (station) {
+      assert.equal(cook(s, station), true);
+      advance(s, STATIONS[station].cook + .2);
+    }
+    assert.equal(addIngredient(s, ingredient, target), true);
   }
-  assert.ok(schedule(1, 'x').every(p => p.order.length === 1), 'day 1: one kopi each');
-  const [one, two, three] = goals(schedule(8, 'y'));
-  assert.ok(one < two && two < three);
+  return target;
+}
+
+test('menu and kitchen unlock the recipes over fifteen days', () => {
+  assert.deepEqual(menuFor(1), ['kopi']);
+  assert.deepEqual(newOn(2), ['kopiO', 'toast']);
+  assert.deepEqual(newOn(15), []);
+  assert.deepEqual(kitchenFor(1), { bases: ['cup'], ingredients: ['kopi', 'milk'], stations: [] });
+  assert.deepEqual(new Set(menuFor(DAYS)), new Set(Object.keys(DISHES)));
+  for (const [id, dish] of Object.entries(DISHES)) {
+    assert.ok(menuFor(dish.day).includes(id));
+    for (const ing of dish.has) assert.equal(INGREDIENTS[ing].base, dish.base);
+  }
 });
 
-test('cooking takes time; ready food is served to whoever needs it most, and paying adds tips and combos', () => {
-  const s = withCustomer(['kopi', 'kopi']);
-  assert.equal(cook(s, 'kopi'), true);
-  assert.equal(cook(s, 'kopi'), true);
-  assert.equal(cook(s, 'kopi'), false, 'the machine has two slots');
-  assert.equal(s.stations.kopi.slots[0].state, 'cooking');
-  assert.equal(tapSlot(s, 'kopi', 0), false, 'not ready yet');
-  seconds(s, STATIONS.kopi.cook + .1);
-  assert.equal(s.stations.kopi.slots[0].state, 'ready');
-  assert.equal(tapSlot(s, 'kopi', 0), true);
-  assert.equal(s.seats[0].got.filter(Boolean).length, 1);
-  assert.equal(tapSlot(s, 'kopi', 1), true);
-  assert.equal(s.served, 1);
-  assert.ok(s.coins > DISHES.kopi.price * 2, 'a tip for quick service');
-  assert.ok(s.coins <= DISHES.kopi.price * 2 * 1.5 + .01, 'tips are at most half');
-  assert.equal(s.combo, 1);
-  seconds(s, 1);
-  assert.equal(s.seats[0], null, 'a happy customer leaves after a moment');
+test('seeded schedules are reproducible, bounded and use available dishes', () => {
+  const spec = { day: 9, seed: 'a' };
+  assert.deepEqual(schedule(spec), schedule(spec));
+  assert.notDeepEqual(schedule(spec), schedule({ ...spec, seed: 'b' }));
+  const people = schedule(spec);
+  assert.ok(people.every(p => p.at >= 0 && p.at < SHIFT && p.order.every(d => menuFor(9).includes(d))));
+  assert.ok(schedule({ day: 1 }).every(p => p.order.length === 1 && p.order[0] === 'kopi'));
+  const targets = goals(people);
+  assert.ok(targets[0] < targets[1] && targets[1] < targets[2]);
+  assert.equal(starsFor(targets[1], targets), 2);
 });
 
-test('some food burns if left ready too long; burnt food can be thrown away (for a small cost)', () => {
-  const s = withCustomer(['toast']);
-  cook(s, 'toast');
-  seconds(s, STATIONS.toast.cook + .1);
-  assert.equal(s.stations.toast.slots[0].state, 'ready');
-  seconds(s, STATIONS.toast.burn + .1);
-  assert.equal(s.stations.toast.slots[0].state, 'burnt');
+test('every recipe matches exactly in either order; extra and missing ingredients do not', () => {
+  for (const [id, recipe] of Object.entries(DISHES)) {
+    assert.equal(dishOf({ base: recipe.base, has: [...recipe.has].reverse() }), id);
+    assert.notEqual(dishOf({ base: recipe.base, has: recipe.has.slice(0, -1) }), id);
+    assert.notEqual(dishOf({ base: recipe.base, has: [...recipe.has, recipe.has[0]] }), id);
+    assert.ok(couldBe({ base: recipe.base, has: recipe.has.slice(0, 1) }).includes(id));
+  }
+  assert.equal(dishOf(null), null);
+});
+
+test('each recipe can be assembled through actual kitchen actions', () => {
+  for (const id of Object.keys(DISHES)) {
+    const s = customers([[id]]);
+    const spot = build(s, id);
+    assert.equal(dishOf(s.prep[spot]), id);
+    assert.equal(serve(s, spot, 0), true);
+    assert.equal(s.served, 1);
+  }
+});
+
+test('wrong base, duplicate and impossible ingredients do not consume cooked food', () => {
+  const s = customers([['toast']]);
+  assert.equal(placeBase(s, 'cup', 0), true);
+  assert.equal(addIngredient(s, 'kaya', 0), false);
+  assert.equal(addIngredient(s, 'kopi', 0), true);
+  assert.equal(addIngredient(s, 'kopi', 0), false);
+  assert.equal(addIngredient(s, 'teh', 0), false);
+  assert.equal(cook(s, 'toaster'), true);
+  advance(s, STATIONS.toaster.cook + .2);
+  assert.equal(addIngredient(s, 'toast', 0), false);
+  assert.equal(s.stations.toaster.slots[0].state, 'ready');
+  assert.equal(placeBase(s, 'plate', 1), true);
+  assert.equal(addIngredient(s, 'toast', 1), true);
+  assert.equal(s.stations.toaster.slots[0], null);
+});
+
+test('cooking, burning, binning, timing and capacity upgrades', () => {
+  const s = customers([['toast']], { upgrades: { fast: 1, timer: 1, slots: 1, prep: 1 } });
+  assert.equal(s.prep.length, PREP + 1);
+  assert.equal(s.stations.toaster.slots.length, STATIONS.toaster.slots + 1);
+  assert.equal(cook(s, 'toaster'), true);
+  advance(s, STATIONS.toaster.cook * .85 + .1);
+  const item = s.stations.toaster.slots[0];
+  assert.equal(item.state, 'ready');
+  assert.ok(progress(s, 'toaster', item) < .1);
+  advance(s, STATIONS.toaster.burn + .2);
+  assert.equal(item.state, 'ready');
+  advance(s, 2);
+  assert.equal(item.state, 'burnt');
   assert.equal(s.burnt, 1);
   s.coins = 5;
-  assert.equal(tapSlot(s, 'toast', 0), true);
+  assert.equal(binBurnt(s, 'toaster'), true);
   assert.equal(s.coins, 5 - BURNT_COST);
-  assert.equal(s.stations.toast.slots[0], null);
-  const k = withCustomer(['kopi']);
-  cook(k, 'kopi');
-  seconds(k, 30);
-  assert.notEqual(k.stations.kopi.slots[0]?.state, 'burnt', 'drinks never burn');
+  assert.equal(binBurnt(s, 'toaster'), false);
+  assert.equal(placeBase(s, 'plate'), true);
+  assert.equal(binDish(s, 0), true);
+  assert.equal(s.coins, 5 - BURNT_COST - WASTE_COST);
+  assert.equal(s.wasted, 1);
 });
 
-test('the kitchen timer gives more time before burning; faster stoves cook faster; more burners', () => {
-  const base = withCustomer(['toast']);
-  const up = withCustomer(['toast'], { upgrades: { timer: 1, fast: 2, slots: 1 } });
-  assert.equal(up.stations.toast.slots.length, STATIONS.toast.slots + 1);
-  cook(base, 'toast');
-  cook(up, 'toast');
-  seconds(base, STATIONS.toast.cook * .8);
-  seconds(up, STATIONS.toast.cook * .8);
-  assert.equal(base.stations.toast.slots[0].state, 'cooking');
-  assert.equal(up.stations.toast.slots[0].state, 'ready', '12% faster twice');
-  seconds(up, STATIONS.toast.burn + .5);
-  assert.equal(up.stations.toast.slots[0].state, 'ready', 'two more seconds before it burns');
-  assert.ok(progress(up, 'toast', up.stations.toast.slots[0]) > .5);
-});
-
-test('a customer who waits too long leaves angry and breaks the combo; a full counter makes a queue', () => {
-  const s = withCustomer(['rice']);
-  s.combo = 4;
-  seconds(s, 31);
-  assert.equal(s.lost, 1);
-  assert.equal(s.combo, 0);
-  const busy = createShift({ day: 9, seed: 'q' });
-  busy.arrivals = Array.from({ length: SEATS + 5 }, (_, i) => ({ id: i, at: 0, who: 'kid', emoji: '🧒', order: ['kopi'], patience: 40 }));
-  step(busy);
-  assert.ok(busy.seats.every(Boolean));
-  assert.equal(busy.queue.length, 3, 'up to three wait in line');
-  assert.equal(busy.passed, 2, 'the rest walk past');
-});
-
-test('the one-tap station: serves what is ready, else cooks, else bins burnt food; serves the most urgent first', () => {
-  const s = withCustomer(['satay']);
-  assert.equal(tapStation(s, 'satay'), 'cook');
-  assert.equal(tapStation(s, 'satay'), 'cook');
-  assert.equal(tapStation(s, 'satay'), null, 'both burners busy');
-  seconds(s, STATIONS.satay.cook + .1);
-  assert.equal(tapStation(s, 'satay'), 'serve');
+test('explicit serving respects the chosen customer; automatic serving picks the most urgent', () => {
+  const s = customers([['kopi', 'kopi'], ['kopi'], ['toast']]);
+  assert.equal(servingFor(s, 'kopi'), 1);
+  let spot = build(s, 'kopi');
+  assert.equal(serve(s, spot, 2), false);
+  assert.equal(serve(s, spot), true);
   assert.equal(s.served, 1);
-  seconds(s, STATIONS.satay.burn + .2);
-  assert.equal(s.stations.satay.slots.filter(x => x?.state === 'burnt').length, 1);
-  assert.equal(tapStation(s, 'satay'), 'cook', 'a free burner first');
-  assert.equal(tapStation(s, 'satay'), 'trash', 'then the burnt one goes');
-  // the most impatient customer gets served first
-  const two = createShift({ day: 9, seed: 'u' });
-  two.arrivals = [
-    { id: 0, at: 0, who: 'uncle', emoji: '👴', order: ['kopi'], patience: 30 },
-    { id: 1, at: 0, who: 'office', emoji: '🧑‍💼', order: ['kopi'], patience: 10 },
-  ];
-  step(two);
-  assert.equal(servingFor(two, 'kopi'), 1);
+  assert.equal(s.combo, 1);
+  assert.ok(s.coins > DISHES.kopi.price);
+  spot = build(s, 'kopi');
+  assert.equal(serve(s, spot, 0), true);
+  assert.equal(s.served, 1);
+  spot = build(s, 'kopi');
+  assert.equal(serve(s, spot, 0), true);
+  assert.equal(s.served, 2);
+  assert.equal(s.dishes, 3);
+  assert.equal(s.combo, 2);
 });
 
-test('the shift ends after 90 seconds, with stars against the goals', () => {
-  const s = createShift({ day: 3, seed: 'end' });
-  seconds(s, SHIFT + .1);
+test('customers time out, queues are bounded, and day shifts close on time', () => {
+  const s = customers(Array.from({ length: SEATS + QUEUE_MAX + 2 }, () => ['kopi']));
+  assert.equal(s.queue.length, QUEUE_MAX);
+  assert.equal(s.passed, 2);
+  s.combo = 4;
+  advance(s, 61);
+  assert.ok(s.lost > 0);
+  assert.equal(s.combo, 0);
+  advance(s, SHIFT);
   assert.equal(s.phase, 'over');
-  assert.equal(tapStation(s, 'kopi'), null, 'no cooking after closing');
-  assert.equal(starsFor(0, [10, 20, 30]), 0);
-  assert.equal(starsFor(25, [10, 20, 30]), 2);
+  assert.equal(placeBase(s, 'cup'), false);
 });
 
-test('a shift replays exactly from its taps (so scores can be checked)', () => {
-  const live = createShift({ day: 9, seed: 'r', upgrades: { fast: 1 } });
-  const taps = [];
-  const ids = Object.keys(live.stations);
-  let i = 0;
+test('action logs replay a whole shift exactly and respect a tick limit', () => {
+  const spec = { day: 1, seed: 'replay' };
+  const live = createShift(spec);
+  const actions = [];
+  const perform = (kind, a, b = -1) => {
+    actions.push([live.ticks, kind, a, b]);
+    act(live, kind, a, b);
+  };
   while (live.phase === 'running') {
-    if (live.ticks % 13 === 0) {
-      const id = ids[i++ % ids.length];
-      taps.push([live.ticks, 'station', id, 0]);
-      tapStation(live, id);
+    if (live.seats.some(c => c && !c.leaving) && live.prep.every(x => !x)) {
+      perform('base', 'cup');
+      perform('add', 'kopi');
+      perform('add', 'milk');
+      perform('serve', 0);
     }
     step(live);
     live.events.length = 0;
   }
-  const again = replay({ day: 9, seed: 'r', upgrades: { fast: 1 } }, taps);
-  assert.equal(again.coins, live.coins);
-  assert.equal(again.served, live.served);
-  assert.equal(again.lost, live.lost);
-  assert.equal(again.burnt, live.burnt);
+  assert.ok(live.served > 0);
+  assert.deepEqual(replay(spec, actions), live);
+  assert.equal(replay(spec, actions, 100).ticks, 100);
 });
 
-test('the shop: prices rise, the top level has no price; decorations cost money; the daily rush', () => {
-  for (const [id, u] of Object.entries(UPGRADES)) {
-    assert.ok(u.costs.every((c, k) => k === 0 || c > u.costs[k - 1]), id);
-    assert.equal(upgradeCost(id, u.costs.length), null);
-  }
-  assert.ok(Object.values(DECOR).every(d => d.cost > 0));
-  assert.equal(DAYS, 15);
+test('speed run has a weekly seed, all dishes, 15 customers and loss penalties', () => {
+  const a = speedRun(new Date('2026-11-27T12:00:00Z'));
+  const b = speedRun(new Date('2026-11-29T12:00:00Z'));
+  const c = speedRun(new Date('2026-11-30T00:00:00Z'));
+  assert.equal(a.key, b.key);
+  assert.notEqual(a.key, c.key);
+  const s = createShift(a.spec);
+  assert.equal(s.arrivals.length, SPEED_CUSTOMERS);
+  assert.deepEqual(new Set(s.kitchen.stations), new Set(Object.keys(STATIONS)));
+  while (s.phase === 'running') step(s);
+  assert.equal(s.lost, SPEED_CUSTOMERS);
+  assert.equal(s.passed, 0);
+  assert.equal(speedTime(s), Math.round((s.t + 10 * SPEED_CUSTOMERS) * 100) / 100);
+});
+
+test('daily uses Singapore dates and standard stall; shop prices increase and cap', () => {
+  assert.equal(dayKey(new Date('2026-11-27T15:59:00Z')), '2026-11-27');
+  assert.equal(dayKey(new Date('2026-11-27T16:00:00Z')), '2026-11-28');
   const d = daily('2026-11-28');
   assert.equal(d.number, 2);
-  assert.deepEqual(d.shift.upgrades, {}, 'everyone gets the same stall');
-  assert.equal(dayKey(new Date('2026-11-28T15:59:00Z')), '2026-11-28');
+  assert.deepEqual(d.spec.upgrades, {});
+  assert.deepEqual(schedule(d.spec), schedule(daily('2026-11-28').spec));
+  for (const [id, upgrade] of Object.entries(UPGRADES)) {
+    assert.ok(upgrade.costs.every((cost, i) => i === 0 || cost > upgrade.costs[i - 1]));
+    assert.equal(upgradeCost(id, upgrade.costs.length), null);
+  }
+  assert.ok(Object.values(DECOR).every(d => d.cost > 0));
+});
+
+test('the leaderboard server replays with this exact copy of the rules', async () => {
+  // The Hawker Haggle server keeps a copy at server/hh/hawker_rush_rules/engine.mjs to check saved runs.
+  // If you change engine.mjs: copy it there too (and raise ENGINE in competition.mjs and hawker_rush.py if old runs
+  // would replay differently), then update this fingerprint.
+  const { createHash } = await import('node:crypto');
+  const { readFile } = await import('node:fs/promises');
+  const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
+  assert.equal(createHash('sha256').update(text).digest('hex'), '3b6ba5240c4dcc949f13e370105cc504e472e252cceb9dd640539698fabcfd2e');
 });
