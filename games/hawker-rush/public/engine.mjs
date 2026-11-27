@@ -1,14 +1,22 @@
-// Hawker Rush (v2): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
+// Hawker Rush (v3): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
 // step: a cup, then kopi, then condensed milk; a plate, then toast from the toaster (it burns!), kaya and butter...
 // then serve it to the customer. Quick service earns tips; serving in a row builds a combo.
+// A shift comes in waves (a quiet open, the lunch rush, a breather, the dinner rush); quick players can ring the bell to
+// call the next customer in early, and close early for a bonus.
 // Deterministic: a seed and the list of actions replay exactly (for checked leaderboards).
 
 export const TICK = 1 / 30;
 export const SEATS = 4;
-export const QUEUE_MAX = 3;
+export const QUEUE_MAX = 5;
 export const DAYS = 15;
 export const SHIFT = 120; // seconds in a story or daily shift
 export const SPEED_CUSTOMERS = 15; // a speed run: serve them all, as fast as you can
+export const MAX_PLAYERS = 4; // co-op: friends sharing one stall
+// the waves of a shift: [from second, busyness] (busyness: customers per second, relative)
+export const WAVES = [[0, .9, 'open'], [20, 1.9, 'lunch'], [55, .7, 'breather'], [70, 1.6, 'dinner'], [SHIFT - 20, 0, 'closing']];
+export const CALL_TIP = 1.25; // a customer you called in early tips 25% more
+export const CALL_AHEAD = 12; // the bell calls in someone due within this many seconds
+export const EARLY_BONUS = .15; // closing early: up to this much per second left on the clock (all served)
 
 // ---------------------------------------------------------------------------------------------------- the kitchen
 // bases: what a dish is built in
@@ -133,23 +141,60 @@ export function steps(dish) {
   return 1 + DISHES[dish].has.reduce((n, i) => n + (INGREDIENTS[i].cooked ? 2 : 1), 0);
 }
 
+/** How many friends share the stall (1 to MAX_PLAYERS). */
+export function playersOf(spec) {
+  const n = spec?.players;
+  return Number.isInteger(n) && n >= 1 && n <= MAX_PLAYERS ? n : 1;
+}
+export const seatsFor = players => SEATS + (players >= 2 ? 1 : 0) + (players >= 4 ? 1 : 0);
+export const prepFor = (players, upgrades = {}) => PREP + (upgrades.prep ?? 0) + Math.min(3, 2 * (players - 1));
+
+/** How busy the stall is at second `t` (the waves, eased in on the first days). */
+function busyness(t, day) {
+  const ease = Math.min(1, day / 4);
+  let w = 0;
+  for (const [from, b] of WAVES) if (t >= from) w = b;
+  return w === 0 ? 0 : 1 + ease * (w - 1);
+}
+
+/** When `count` customers arrive: spread by the waves (more in the rushes), each a little early or late. */
+function arrivalTimes(count, day, rng) {
+  const step = .5, end = SHIFT - 20, start = 1.5;
+  const cum = [0];
+  for (let t = start; t < end; t += step) cum.push(cum[cum.length - 1] + busyness(t, day) * step);
+  const total = cum[cum.length - 1];
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const u = total * (i + .15 + rng() * .7) / count;
+    let k = 1;
+    while (k < cum.length - 1 && cum[k] < u) k++;
+    const t = start + (k - 1) * step + step * (u - cum[k - 1]) / Math.max(1e-9, cum[k] - cum[k - 1]);
+    out.push(Math.min(end, Math.max(start, t)));
+  }
+  return out;
+}
+
 /**
- * The customers of a shift. `mode`: 'day' (a story or daily shift), or 'speed' (a speed run: a steady line of
- * customers, every dish on the menu).
+ * The customers of a shift. `mode`: 'day' (a story or daily shift, in waves), or 'speed' (a speed run: a steady line
+ * of customers, every dish on the menu). `players`: friends sharing the stall (more of them, more customers).
  */
-export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {} } = {}) {
-  const rng = mulberry32(hash(`hawker-rush-2:${mode}:${seed}:${day}`));
+export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, players = 1 } = {}) {
+  const team = playersOf({ players });
+  const rng = mulberry32(hash(`hawker-rush-3:${mode}:${seed}:${day}:${team}`));
   const speed = mode === 'speed';
   const menu = menuFor(speed ? DAYS : day);
   const fresh = speed ? [] : newOn(day);
-  const count = speed ? SPEED_CUSTOMERS : Math.min(30, 6 + Math.round(day * 1.3));
-  const span = SHIFT - 22;
+  const solo = speed ? SPEED_CUSTOMERS : Math.min(30, 9 + Math.round(day * 1.3));
+  const count = Math.round(solo * (1 + .6 * (team - 1)));
+  const times = speed ? null : arrivalTimes(count, day, rng);
+  if (times) times[0] = 1.5; // (someone is always waiting when the stall opens)
   const hard = speed ? .2 : Math.min(.3, day * .018);
   const people = [];
   let at = 1.5;
   for (let i = 0; i < count; i++) {
-    if (i > 0) at = speed ? at + 1.2 + rng() * 1.3 : (rng() < .2 ? at + .6 : at + (span / count) * (.55 + rng() * .9));
-    if (!speed && at > SHIFT - 20) break;
+    if (speed) {
+      if (i > 0) at += 1.2 + rng() * 1.3;
+    } else at = times[i];
     const big = speed ? (rng() < .35 ? 1 : 0) : day === 1 ? 0 : day < 4 ? (rng() < .3 ? 1 : 0) : (rng() < .2 ? 2 : rng() < .5 ? 1 : 0);
     const order = [];
     for (let k = 0; k <= big; k++) {
@@ -160,13 +205,13 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {} } = {}
     const patience = (16 + 4 * work) * who.patience * (1 - hard) * (1 + .12 * (upgrades.fan ?? 0));
     people.push({ id: i, at: round2(at), who: who.id, order, patience: round2(patience) });
   }
-  return people;
+  return people.sort((a, b) => a.at - b.at || a.id - b.id);
 }
 
 /** The stars of a day: a share of what every order is worth before tips. */
 export function goals(people) {
   const worth = people.reduce((s, p) => s + p.order.reduce((t, d) => t + DISHES[d].price, 0), 0);
-  return [Math.round(worth * .55), Math.round(worth * .85), Math.round(worth * 1.1)];
+  return [Math.round(worth * .45), Math.round(worth * .8), Math.round(worth * 1.05)];
 }
 
 export function starsFor(coins, goal) {
@@ -174,24 +219,26 @@ export function starsFor(coins, goal) {
 }
 
 // ---------------------------------------------------------------------------------------------------- a shift
-/** A new shift. `spec`: { day, seed, mode: 'day'|'speed', upgrades }. */
+/** A new shift. `spec`: { day, seed, mode: 'day'|'speed', upgrades, players }. */
 export function createShift(spec = {}) {
   const { day = 1, seed = 1, mode = 'day', upgrades = {} } = spec;
-  const people = schedule({ day, seed, mode, upgrades });
+  const players = playersOf(spec);
+  const people = schedule({ day, seed, mode, upgrades, players });
   const kitchen = kitchenFor(mode === 'speed' ? DAYS : day);
   const stations = {};
   for (const id of kitchen.stations) {
     stations[id] = { slots: Array.from({ length: STATIONS[id].slots + (upgrades.slots ?? 0) }, () => null) };
   }
   return {
-    day, seed, mode, upgrades, kitchen,
-    t: 0, ticks: 0, phase: 'running',
+    day, seed, mode, upgrades, kitchen, players,
+    t: 0, ticks: 0, phase: 'running', wave: -1,
     arrivals: people, next: 0,
-    seats: Array.from({ length: SEATS }, () => null),
+    seats: Array.from({ length: seatsFor(players) }, () => null),
     queue: [],
-    prep: Array.from({ length: PREP + (upgrades.prep ?? 0) }, () => null),
+    prep: Array.from({ length: prepFor(players, upgrades) }, () => null),
     stations,
     coins: 0, tips: 0, served: 0, dishes: 0, lost: 0, passed: 0, burnt: 0, wasted: 0, combo: 0, bestCombo: 0,
+    called: 0, early: 0, earlyBonus: 0,
     goal: goals(people),
     events: [],
   };
@@ -359,7 +406,7 @@ function pay(shift, seat) {
   const c = shift.seats[seat];
   const base = c.order.reduce((s, d) => s + DISHES[d].price, 0);
   const quick = Math.max(0, c.left / c.patience);
-  const tip = base * .6 * quick * (1 + .2 * (shift.upgrades.tipjar ?? 0));
+  const tip = base * .6 * quick * (1 + .2 * (shift.upgrades.tipjar ?? 0)) * (c.called ? CALL_TIP : 1);
   const combo = 1 + Math.min(.5, shift.combo * .1);
   const amount = round2((base + tip) * combo);
   shift.coins = round2(shift.coins + amount);
@@ -372,11 +419,27 @@ function pay(shift, seat) {
   shift.events.push({ type: 'paid', seat, amount, combo: shift.combo, perfect: quick > .6 });
 }
 
-function seatSomeone(shift, person) {
+function seatSomeone(shift, person, called = false) {
   const free = shift.seats.indexOf(null);
   if (free < 0) return false;
-  shift.seats[free] = { ...person, left: person.patience, got: person.order.map(() => false), since: shift.t };
-  shift.events.push({ type: 'arrive', seat: free });
+  shift.seats[free] = { ...person, left: person.patience, got: person.order.map(() => false), since: shift.t, called };
+  shift.events.push({ type: 'arrive', seat: free, called });
+  return true;
+}
+
+/** Whether the bell can call the next customer in now (a free seat, nobody queuing, someone due soon). */
+export function canCall(shift) {
+  return shift.phase === 'running' && shift.mode !== 'speed' && shift.next < shift.arrivals.length &&
+    shift.arrivals[shift.next].at <= shift.t + CALL_AHEAD && !shift.queue.length && shift.seats.includes(null);
+}
+
+/** Ring the bell: the next customer comes in now (and tips a little more for it). */
+export function callNext(shift) {
+  if (!canCall(shift)) return false;
+  const p = shift.arrivals[shift.next++];
+  seatSomeone(shift, p, true);
+  shift.called++;
+  shift.events.push({ type: 'call' });
   return true;
 }
 
@@ -385,6 +448,14 @@ export function step(shift) {
   if (shift.phase !== 'running') return;
   shift.ticks++;
   shift.t = shift.ticks / 30;
+  if (shift.mode !== 'speed') {
+    let w = -1;
+    WAVES.forEach(([from], k) => { if (shift.t >= from) w = k; });
+    if (w !== shift.wave) {
+      shift.wave = w;
+      if (w > 0) shift.events.push({ type: 'wave', wave: WAVES[w][2] });
+    }
+  }
   while (shift.next < shift.arrivals.length && shift.arrivals[shift.next].at <= shift.t) {
     const p = shift.arrivals[shift.next++];
     if (!seatSomeone(shift, p)) {
@@ -428,7 +499,16 @@ export function step(shift) {
     });
   }
   const everyoneDone = shift.next >= shift.arrivals.length && !shift.queue.length && shift.seats.every(c => !c);
-  if ((shift.mode === 'speed' && everyoneDone) || (shift.mode !== 'speed' && shift.t >= SHIFT)) {
+  if (shift.mode !== 'speed' && everyoneDone && shift.t < SHIFT) {
+    // everyone has been and gone: close early, with a bonus for the time left
+    // (the bonus is for good service: it shrinks with every customer who left unhappy or walked past)
+    const share = shift.served / Math.max(1, shift.served + shift.lost + shift.passed);
+    shift.early = Math.floor(SHIFT - shift.t);
+    shift.earlyBonus = round2(shift.early * EARLY_BONUS * share);
+    shift.coins = round2(shift.coins + shift.earlyBonus);
+    shift.phase = 'over';
+    shift.events.push({ type: 'closed-early', seconds: shift.early, amount: shift.earlyBonus }, { type: 'over' });
+  } else if ((shift.mode === 'speed' && everyoneDone) || (shift.mode !== 'speed' && shift.t >= SHIFT)) {
     shift.phase = 'over';
     shift.events.push({ type: 'over' });
   }
@@ -450,7 +530,7 @@ export function speedTime(shift) {
 /**
  * Every player action, as recorded for a replay: [tick, kind, a, b].
  * kinds: 'base' (base, spot), 'add' (ingredient, spot), 'cook' (station), 'serve' (spot, seat),
- * 'bin-dish' (spot), 'bin-burnt' (station).
+ * 'bin-dish' (spot), 'bin-burnt' (station), 'call' (0: ring the bell).
  */
 export function act(shift, kind, a, b = -1) {
   switch (kind) {
@@ -460,6 +540,7 @@ export function act(shift, kind, a, b = -1) {
     case 'serve': return serve(shift, a, b);
     case 'bin-dish': return binDish(shift, a);
     case 'bin-burnt': return binBurnt(shift, a);
+    case 'call': return a === 0 && callNext(shift);
     default: return false;
   }
 }

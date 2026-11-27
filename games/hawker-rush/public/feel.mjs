@@ -124,6 +124,7 @@ export const sfx = {
   nope() { buzz([25, 25, 25]); if (ready()) tone('square', 160, 120, .1, .07); },
   tick() { if (ready()) tone('square', 1500, 1500, .03, .04); },
   start() { buzz(20); if (ready()) [784, 988, 1175].forEach((f, i) => tone('triangle', f, f, .14, .14, i * .08)); },
+  ding() { buzz(12); if (ready()) { tone('sine', 1760, 1760, .4, .12); tone('sine', 2637, 2637, .32, .06, .015); } },
   bell() {
     buzz([40, 60, 120]);
     if (!ready()) return;
