@@ -4,6 +4,8 @@
 
 [Play Ceiling Punch](https://caspar5911.github.io/caspars-arcade/games/ceiling-punch/), an endless one-tap climber: the robot never stops, so punch through cracks, risk gold double smashes, and stay ahead of the rising flood. [Implementation plan](docs/superpowers/plans/2026-11-27-ceiling-punch.md).
 
+[Play Hawker Rush](https://caspar5911.github.io/caspars-arcade/games/hawker-rush/), a cooking-and-serving rush at a hawker stall: cook, serve before customers lose patience, earn tips and upgrade your stall. 15 days, endless mode and a daily rush.
+
 [Play Kopi Sort](https://caspar5911.github.io/caspars-arcade/games/kopi-sort/), a sorting puzzle with a hawker twist: pour cups between trays until each holds one drink. 20 levels and a daily tray everyone shares.
 
 [Play Snap Ruler](https://caspar5911.github.io/caspars-arcade/games/snap-ruler/), a 1,000-floor arcade game with a bend-and-release marble launcher. Personal bests and checkpoints every 25 floors are saved in the browser.
