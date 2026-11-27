@@ -13,7 +13,7 @@ const source = fileURLToPath(new URL('../', import.meta.url));
 const games = join(source, 'games');
 const assetUrl = './assets/' + version;
 const manifest = JSON.stringify({ build }) + '\n';
-const statuses = { prototype: 'Playable prototype', playable: 'Playable' };
+const statuses = { prototype: 'Playable prototype', playable: 'Playable', archived: 'Shelved prototype' };
 
 async function hasFile(path) {
   try {
@@ -99,14 +99,15 @@ for (const entry of gameFolders.sort((a, b) => a.name.localeCompare(b.name))) {
   } else {
     await cp(publicFiles, target, { recursive: true, filter: publicAsset });
   }
-  cards.push(gameCard(slug, details, cover));
+  cards.push({ archived: details.status === 'archived', html: gameCard(slug, details, cover) });
 }
 
+cards.sort((a, b) => Number(a.archived) - Number(b.archived));
 const hub = await readFile(join(source, 'hub', 'index.html'), 'utf8');
 await writeFile(join(output, 'index.html'), hub
   .replace('./style.css', assetUrl + '/style.css')
   .replace('./legacy.mjs', assetUrl + '/legacy.mjs')
-  .replace('<!-- GAMES -->', () => cards.join('\n      ')));
+  .replace('<!-- GAMES -->', () => cards.map(card => card.html).join('\n      ')));
 for (const file of ['style.css', 'legacy.mjs']) {
   await copyFile(join(source, 'hub', file), join(hubAssets, file));
 }
