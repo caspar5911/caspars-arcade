@@ -604,6 +604,7 @@ function remoteAct(m) {
     run.actions.push([shift.ticks, m.kind, m.a, m.b]);
     run.coop.out.push([shift.ticks, m.kind, m.a, m.b, m.from]);
     tagMoves(m.from, mark);
+    hostFrame(performance.now(), true); // (back to everyone at once: the friend sees their own move sooner)
   } else shift.events.length = mark; // (a friend's slip: no buzz on this phone)
   render();
   handleEvents();
@@ -625,7 +626,9 @@ function guestTick(now) {
   run.last = now;
   const behind = c.upTo - shift.ticks;
   const quiet = behind > 60; // (far behind: jump to the present without every sound on the way)
-  const budget = quiet ? behind : Math.ceil(dt * 30 * (1 + Math.max(0, behind - 6) / 15));
+  // (catch up briskly, especially when a move is waiting to be shown)
+  const keen = c.incoming.length ? 3 : 6;
+  const budget = quiet ? behind : Math.ceil(dt * 30 * (1 + Math.max(0, behind - keen) / 8));
   const target = Math.min(c.upTo, shift.ticks + budget);
   const before = shift.ticks;
   while (shift.ticks < target && shift.phase === 'running') {
