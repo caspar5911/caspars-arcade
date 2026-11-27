@@ -40,6 +40,7 @@ canvas {
   padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
   background: linear-gradient(#151a22e6, #151a2200);
   pointer-events: none;
+  z-index: 2; /* (above the start / game-over card: sound, full screen and back always work) */
 }
 .hud > * { pointer-events: auto; }
 .home, .icon {
@@ -73,6 +74,7 @@ canvas {
 #overlay {
   position: fixed;
   inset: 0;
+  z-index: 1;
   display: grid;
   place-items: center;
   padding: 24px;

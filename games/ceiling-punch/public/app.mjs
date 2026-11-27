@@ -1,6 +1,7 @@
-import { createRun, step, tap, TICK, WIDTH } from './engine.mjs';
+import { createRun, FLOOD_GAP_MAX, step, tap, TICK, WIDTH } from './engine.mjs';
 import { drawScene, MIN_HEIGHT } from './render.mjs';
 import * as feel from './feel.mjs';
+import * as music from './music.mjs';
 import * as lb from './leaderboard.mjs';
 
 const board = document.getElementById('board');
@@ -30,6 +31,7 @@ let previousPhase;
 let previousDirection = run.direction;
 let landedAt = -1e9; // (for the landing squash)
 let warnedFloor = -1; // (the flood warning, once a floor)
+let danger = 0; // 🎵 how close the water is, smoothed (the music follows it)
 let view = { scale: 1, offset: 0, height: MIN_HEIGHT, ratio: 1 };
 // 🏆 this run, for the leaderboard: its ticket (null: started offline), engine ticks since the start, and the taps
 let currentTicket = null;
@@ -68,7 +70,11 @@ function react(from, to) {
   if (to === 'running' && (from === 'ready' || from === 'lost')) feel.start();
   if (to === 'smash') (run.impact.cleared === 2 ? feel.double : feel.smash)();
   if (to === 'running' && from === 'smash') landedAt = performance.now();
-  if (to === 'lost') (run.impact.reason === 'flooded' ? feel.splash : feel.miss)();
+  if (to === 'lost') {
+    (run.impact.reason === 'flooded' ? feel.splash : feel.miss)();
+    music.stop(false, run.impact.reason === 'flooded'); // (caught by the water: the music sinks)
+  }
+  if (to === 'running' && (from === 'ready' || from === 'lost')) danger = 0;
 }
 
 function updateInterface() {
@@ -314,6 +320,12 @@ function frame(time) {
       availableTime -= TICK;
     }
     updateInterface();
+    // 🎵 the chase music: starts with a run (once sound is allowed), follows the water
+    if (run.phase === 'running' || run.phase === 'smash') {
+      if (!music.playing()) music.start(feel.output());
+      danger += (music.dangerFrom(run.floor - run.flood, FLOOD_GAP_MAX) - danger) * Math.min(1, elapsed * 3);
+      music.update(danger, run.floor);
+    }
     if (run.phase === 'running') {
       if (run.direction !== previousDirection) feel.bounce();
       if (run.floor - run.flood < .7 && warnedFloor !== run.floor) {

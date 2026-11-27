@@ -50,6 +50,11 @@ function ready() {
   return audio && master && !muted && audio.state === 'running';
 }
 
+/** The audio output (for the music), once sound is unlocked: { audio, out }, else null. Mute applies to it too. */
+export function output() {
+  return audio && master && audio.state === 'running' ? { audio, out: master } : null;
+}
+
 let noiseBuffer = null;
 function noise() {
   if (!noiseBuffer) {
