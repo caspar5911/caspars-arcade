@@ -64,9 +64,14 @@ test('the Pages artifact contains a hub and a versioned RuleReaper game', async 
   const punch = join(output, 'games', 'ceiling-punch');
   assert.match(hub, /href="\.\/games\/ceiling-punch\/"/);
   assert.match(await readFile(join(punch, 'index.html'), 'utf8'), /<h1>Ceiling <em>Punch<\/em><\/h1>/);
-  for (const asset of ['app.mjs', 'engine.mjs', 'render.mjs', 'style.css', 'cover.png']) {
-    assert.ok((await readFile(join(punch, asset))).length > 0, asset);
+  const punchIndex = await readFile(join(punch, 'index.html'), 'utf8');
+  assert.match(punchIndex, /name="ceiling-punch-build" content="42"/);
+  assert.match(punchIndex, /src="\.\/assets\/42\/app\.mjs"/, 'a new address each release');
+  assert.match(punchIndex, /href="\.\/assets\/42\/style\.css"/);
+  for (const asset of ['app.mjs', 'engine.mjs', 'render.mjs', 'feel.mjs', 'leaderboard.mjs', 'style.css']) {
+    assert.ok((await readFile(join(punch, 'assets', '42', asset))).length > 0, asset);
   }
+  assert.ok((await readFile(join(punch, 'cover.png'))).length > 0);
 });
 
 test('the leaderboard server comes from the build, never the repo', async t => {

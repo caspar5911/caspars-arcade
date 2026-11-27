@@ -17,6 +17,7 @@ const statuses = { prototype: 'Playable prototype', playable: 'Playable', archiv
 const versioned = new Map([
   ['rulereaper', { modules: 'src', meta: 'rulereaper-build' }],
   ['snap-ruler', { modules: '', meta: 'snap-ruler-build' }],
+  ['ceiling-punch', { modules: '', meta: 'ceiling-punch-build' }], // (each release gets new file addresses: phones never keep an old copy)
 ]);
 
 async function hasFile(path) {
