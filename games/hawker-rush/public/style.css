@@ -491,7 +491,15 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 .coop-players svg { width: 56px; height: 70px; }
 .team { position: relative; display: flex; align-items: center; gap: 6px; min-height: 44px; margin: 0 0 4px; padding: 0 2px; }
 .team-names { display: flex; flex-wrap: wrap; gap: 3px; flex: 1; min-width: 0; }
-.team .chip { padding: 1px 7px; border-radius: 10px; border: 2px solid var(--c); font-size: .7rem; font-weight: 850; white-space: nowrap; }
+.team .chip { flex: none; padding: 1px 6px; border-radius: 10px; border: 2px solid var(--c); font-size: .68rem; font-weight: 850; white-space: nowrap; }
+.team .chip.me { background: var(--c); color: #241812; }
+.team-names { flex-wrap: nowrap !important; overflow: hidden; }
+.team { min-height: 40px; }
+.emotes button { width: 36px; height: 36px; font-size: 1rem; }
+.seats.many .order span { display: none; }
+.seats.many .orders { display: flex; flex-wrap: wrap; justify-content: center; gap: 1px; }
+.seats.many .order { padding: 1px; }
+.seats.many .order svg { width: 22px; height: 20px; }
 .emotes { display: flex; gap: 3px; flex: none; }
 .emotes button { width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 10px; background: #ffffff10; font-size: 1.1rem; }
 .emotes button:active { transform: scale(.9); }
