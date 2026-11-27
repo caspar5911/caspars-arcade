@@ -251,6 +251,10 @@ for (const surface of [board, overlay]) {
     takeInput();
   });
 }
+// 🔊 phones only allow sound after a finished tap (finger lifted) or a click: wake it then too
+for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, () => feel.unlock(), { capture: true, passive: true });
+}
 strike.addEventListener('click', event => {
   if (event.detail === 0) takeInput(); // (a keyboard press on the button)
 });

@@ -1,12 +1,16 @@
 // The chase music: an original piece made live with Web Audio (no files), in D minor, that reacts to the flood.
 // `danger` goes from 0 (the water is far below) to 1 (it's at your feet):
-//   0    a low pulsing bassline (D, B♭, C, A: the minor chords that never quite settle) and a slow heartbeat
-//   0.3+ faster, brighter, grittier bass; a clock-like hi-hat ticking in
+//   0    a pulsing bassline and a tense plucked arpeggio (D minor, B♭, C, A: chords that never quite settle) and a
+//        slow heartbeat, all in the range a phone speaker plays (with a sub-octave for headphones)
+//   0.15+ faster, brighter, grittier; a clock-like hi-hat ticking in
 //   0.6+ the heartbeat doubles; a rising string drone swells
 //   0.8+ a high two-note alarm pulse
 // A gold double smash (the water falls back) lets it calm down again. It speeds up a little as you climb, too.
 
 const ROOTS = [38, 34, 36, 33]; // MIDI: D2, B♭1, C2, A1 (one bar each)
+// the plucked arpeggio's chord tones over each bar (mid range: what a phone speaker plays well)
+const CHORDS = [[62, 65, 69, 74], [58, 62, 65, 70], [60, 64, 67, 72], [57, 61, 64, 69]]; // Dm, B♭, C, A
+const ARP = [0, 1, 2, 3, 2, 1, 2, 3]; // which chord tone on each eighth
 const THIRDS = [65, 62, 64, 61]; // the drone's notes over each bar (F4, D4, E4, C#4: tension over A)
 const STEPS = 8; // eighth notes in a bar
 
@@ -48,19 +52,40 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
   const beat = 60 / tempo(danger, floor);
   const eighth = beat / 2;
 
-  // bass: a driving eighth-note ostinato, the octave on the off-beats; brighter and grittier with danger
-  const root = ROOTS[bar] + (s === 3 || s === 7 ? 12 : 0);
+  // bass: a driving eighth-note ostinato, the octave on the off-beats; brighter and grittier with danger. It sits an
+  // octave up (phone speakers can't play deep bass), with a quiet sub-octave underneath for headphones.
+  const root = ROOTS[bar] + 12 + (s === 3 || s === 7 ? 12 : 0);
   const bass = audio.createOscillator();
   bass.type = 'sawtooth';
   bass.frequency.setValueAtTime(hz(root), t);
   const lp = audio.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(260 + 1400 * danger ** 1.3, t);
-  lp.Q.value = 4 + 6 * danger;
-  const bassGain = envelope(audio, t, .16 + .06 * danger, .008, eighth * .85);
+  lp.frequency.setValueAtTime(800 + 2400 * danger ** 1.2, t);
+  lp.Q.value = 3 + 6 * danger;
+  const bassGain = envelope(audio, t, .17 + .06 * danger, .006, eighth * .8);
   bass.connect(lp).connect(bassGain).connect(out);
   bass.start(t);
   bass.stop(t + eighth + .05);
+  const sub = audio.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(hz(root - 12), t);
+  const subGain = envelope(audio, t, .09, .01, eighth * .8);
+  sub.connect(subGain).connect(out);
+  sub.start(t);
+  sub.stop(t + eighth + .05);
+
+  // the plucked arpeggio: a tense minor figure, always there (the part you hear first on a phone)
+  const pluck = audio.createOscillator();
+  pluck.type = 'square';
+  pluck.frequency.setValueAtTime(hz(CHORDS[bar][ARP[s]] + (danger > .7 ? 12 : 0)), t);
+  const pf = audio.createBiquadFilter();
+  pf.type = 'lowpass';
+  pf.frequency.setValueAtTime(1800 + 2500 * danger, t);
+  pf.frequency.exponentialRampToValueAtTime(600, t + eighth * .7);
+  const pg = envelope(audio, t, .075 + .03 * danger, .004, eighth * .65);
+  pluck.connect(pf).connect(pg).connect(out);
+  pluck.start(t);
+  pluck.stop(t + eighth);
 
   // heartbeat: "lub-dub" on beats 1 and 3; doubled when the water is close
   const beats = danger > .6 ? [0, 2, 4, 6] : [0, 4];
@@ -68,18 +93,29 @@ export function scheduleStep(audio, out, t, step, danger, floor = 0) {
     for (const [offset, peak] of [[0, .55], [.13, .32]]) {
       const k = audio.createOscillator();
       k.type = 'sine';
-      k.frequency.setValueAtTime(95, t + offset);
-      k.frequency.exponentialRampToValueAtTime(38, t + offset + .14);
+      k.frequency.setValueAtTime(170, t + offset);
+      k.frequency.exponentialRampToValueAtTime(45, t + offset + .14);
       const g = envelope(audio, t + offset, peak * (.7 + .5 * danger), .004, .16);
       k.connect(g).connect(out);
       k.start(t + offset);
       k.stop(t + offset + .2);
+      // (the "tuk" on top: what a phone speaker plays of a heartbeat)
+      const tuk = audio.createBufferSource();
+      tuk.buffer = noiseBuffer(audio);
+      const tf = audio.createBiquadFilter();
+      tf.type = 'bandpass';
+      tf.frequency.value = 700;
+      tf.Q.value = 1.4;
+      const tg = envelope(audio, t + offset, peak * .75 * (.7 + .5 * danger), .002, .05);
+      tuk.connect(tf).connect(tg).connect(out);
+      tuk.start(t + offset, Math.random() * .3);
+      tuk.stop(t + offset + .07);
     }
   }
 
   // ticking: sixteenth-note hi-hats, coming in as the water rises (a clock running out)
-  if (danger > .3) {
-    const level = (danger - .3) / .7;
+  if (danger > .15) {
+    const level = (danger - .15) / .85;
     for (const half of [0, 1]) {
       const at = t + half * eighth / 2;
       const src = audio.createBufferSource();
@@ -140,7 +176,7 @@ export function start(output) {
   const { audio, out } = output;
   const bus = audio.createGain();
   bus.gain.setValueAtTime(.0001, audio.currentTime);
-  bus.gain.exponentialRampToValueAtTime(.55, audio.currentTime + .6); // (a quick fade in)
+  bus.gain.exponentialRampToValueAtTime(.75, audio.currentTime + .6); // (a quick fade in)
   bus.connect(out);
   state = { audio, out, bus, nextTime: audio.currentTime + .08, step: 0, danger: 0, floor: 0 };
   state.timer = setInterval(pump, 25);
