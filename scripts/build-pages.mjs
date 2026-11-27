@@ -49,6 +49,12 @@ async function buildVersionedGame(publicFiles, target, { modules, meta }) {
     .replace(app, assetUrl + '/app.mjs');
   await writeFile(join(target, 'index.html'), page);
   await writeFile(join(target, 'version.json'), manifest);
+  // (an installable game's home-screen icons and its web app manifest sit beside its page)
+  for (const entry of await readdir(publicFiles, { withFileTypes: true })) {
+    if (entry.isFile() && /^(icon-\d+\.png|manifest\.webmanifest)$/.test(entry.name)) {
+      await copyFile(join(publicFiles, entry.name), join(target, entry.name));
+    }
+  }
 }
 
 async function publicAsset(path) {

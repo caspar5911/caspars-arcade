@@ -300,7 +300,8 @@ function buildStations() {
     el.innerHTML = `<span class="station-picture"></span><span class="station-name">${station.name}</span><span class="station-track"></span><span class="station-info"></span>`;
     // one tap does the obvious thing: add what's ready, else start cooking, else bin what burnt
     el.addEventListener('click', () => stationTap(id));
-    bindDrag(el, () => shift.stations[id].slots.some(slot => slot?.state === 'ready') && {
+    // (ingredient stations: drag what's ready onto a dish; the wok and griddle plate up with a tap)
+    bindDrag(el, () => !station.dishes && shift.stations[id].slots.some(slot => slot?.state === 'ready') && {
       kind: 'add',
       value: station.makes,
       html: Art.dish(E.INGREDIENTS[station.makes].base, [station.makes]),
@@ -781,6 +782,7 @@ async function goSideways() {
   } catch {
     // (not allowed here: the "turn your phone" card asks instead)
   }
+  showFullscreen();
 }
 
 function playing() {
@@ -1653,6 +1655,36 @@ $('sound').addEventListener('click', () => {
 });
 showSound();
 $('openCoop').addEventListener('click', () => coopPage());
+
+// ⛶ full screen: on Android (and computers) straight away, and sideways on phones; on iPhone, how to install it
+// (opened from the home screen: already full screen. Note: page full screen also reports display-mode fullscreen)
+const installed = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches ||
+  (matchMedia('(display-mode: fullscreen)').matches && !document.fullscreenElement);
+function showFullscreen() {
+  const on = Boolean(document.fullscreenElement);
+  $('fullscreen').hidden = installed();
+  $('fullscreen').setAttribute('aria-label', on ? 'Leave full screen' : 'Full screen');
+  $('fullscreen').innerHTML = on
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+}
+$('fullscreen').addEventListener('click', async () => {
+  F.unlock();
+  if (document.fullscreenElement) {
+    await document.exitFullscreen().catch(() => {});
+  } else if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      if (matchMedia('(pointer: coarse)').matches) await screen.orientation?.lock?.('landscape');
+    } catch {
+      // (refused: nothing changes)
+    }
+  } else openDialog('fsTip');
+  showFullscreen();
+});
+$('fsTipClose').addEventListener('click', () => closeDialog('fsTip'));
+document.addEventListener('fullscreenchange', showFullscreen);
+showFullscreen();
 $('startShift').addEventListener('click', goSideways);
 $('coopGo').addEventListener('click', goSideways);
 $('coopJoin').addEventListener('click', goSideways);

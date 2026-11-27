@@ -7,6 +7,13 @@
   <meta name="theme-color" content="#241d15">
   <meta name="description" content="Run a hawker stall. Build kopi, kaya toast, chicken rice and satay, then serve customers before they lose patience.">
   <title>Hawker Rush · Caspar’s Arcade</title>
+  <!-- installable: added to the home screen it opens full screen (and sideways) -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hawker Rush">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -20,6 +27,9 @@
     </button>
     <button id="pause" class="icon" type="button" aria-label="Pause" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
+    </button>
+    <button id="fullscreen" class="icon" type="button" aria-label="Full screen">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
     </button>
     <button id="sound" class="icon" type="button" aria-label="Turn sound off"></button>
   </header>
@@ -178,6 +188,18 @@
       <button id="resume" class="big" type="button" autofocus>Resume shift</button>
       <button id="pausedRecipes" class="ghost" type="button">Recipes</button>
       <button id="quit" class="link" type="button">Quit this shift</button>
+    </div>
+  </dialog>
+  <dialog id="fsTip" class="overlay" aria-labelledby="fsTipTitle">
+    <div class="card">
+      <h2 class="res-title" id="fsTipTitle">Play full screen</h2>
+      <p class="intro">This browser can’t go full screen by itself (iPhones don’t allow it). Install Hawker Rush instead:</p>
+      <ol class="steps-list">
+        <li>Tap the <b>Share</b> button <span aria-hidden="true">(the square with an arrow)</span></li>
+        <li>Choose <b>Add to Home Screen</b></li>
+        <li>Open <b>Hawker Rush</b> from your home screen: it fills the whole screen. Turn your phone sideways!</li>
+      </ol>
+      <button id="fsTipClose" class="big" type="button" autofocus>Got it</button>
     </div>
   </dialog>
   <div id="rotate" role="dialog" aria-label="Turn your phone sideways">

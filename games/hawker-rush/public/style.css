@@ -275,13 +275,16 @@ h2 small { color: var(--gold); font-size: .92rem; margin-left: 6px; }
 .prep-name { display: block; min-height: 1.1em; font-size: clamp(.63rem, 2.6vw, .84rem); font-weight: 780; line-height: 1.05; }
 .prep-dash { font-size: 1.3rem; color: #ffe1b39c; }
 .prep-bin {
+  /* a small badge on the corner: it must never cover the dish (on a narrow co-op counter it did, and a tap meant
+     to serve binned the dish instead) */
   position: absolute;
-  right: 0;
-  top: 0;
+  z-index: 2;
+  right: -7px;
+  top: -7px;
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: 0;
   background: none;
@@ -289,7 +292,7 @@ h2 small { color: var(--gold); font-size: .92rem; margin-left: 6px; }
   font-weight: 850;
   font-size: 1.17rem;
 }
-.prep-bin::before { position: absolute; z-index: 0; inset: 4px auto auto 14px; width: 24px; height: 24px; border-radius: 50%; background: #452421; content: ''; }
+.prep-bin::before { position: absolute; z-index: 0; inset: 3px; border-radius: 50%; background: #452421; box-shadow: 0 0 0 2px #00000055; content: ''; }
 .prep-bin { isolation: isolate; }
 .prep-bin::before { z-index: -1; }
 .prep-bin:hover::before, .prep-bin:focus-visible::before { background: #9a3a26; }
@@ -680,7 +683,8 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
   .line, .line.wide { flex-basis: calc(var(--n) * 36px + 22px); }
   .line .stock, .line .station { min-height: 44px; }
   .line .stock svg { height: clamp(22px, 6.5vh, 40px); }
-  .lines.roomy .line .stock { min-height: 64px; }
+  .lines.roomy .line .stock { min-height: 96px; font-size: .9rem; }
+  .lines.roomy .line .stock svg { height: 54px; }
   #rotate { display: none !important; }
 }
 @media (orientation: landscape) and (min-aspect-ratio: 5/4) and (max-width: 720px) {
@@ -696,3 +700,14 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 @media (orientation: portrait) {
   body.in-shift:not(.upright) #rotate { display: grid; }
 }
+
+#fullscreen svg, #book svg, #pause svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.steps-list { margin: 8px 0 14px; padding-left: 22px; text-align: left; line-height: 1.45; }
+.steps-list li { margin: 4px 0; }
+
+/* ingredient names shrink to fit their button (never cut off) */
+.line .stock { container-type: inline-size; }
+.line .stock span { font-size: clamp(.5rem, 19cqi, .78rem) !important; text-overflow: clip; letter-spacing: -.01em; }
+/* an order too narrow for its name shows just the dish picture */
+.order { container-type: inline-size; }
+@container (max-width: 62px) { .order span { display: none; } }
