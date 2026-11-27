@@ -2,6 +2,8 @@
 
 [Open the arcade](https://caspar5911.github.io/RuleReaper/). GitHub Pages builds the hub and its games from this repository after tests pass on main.
 
+[Play Ceiling Punch](https://caspar5911.github.io/RuleReaper/games/ceiling-punch/), a six-floor one-tap arcade prototype. [Implementation plan](docs/superpowers/plans/2026-11-27-ceiling-punch.md).
+
 [Play Snap Ruler](https://caspar5911.github.io/RuleReaper/games/snap-ruler/), a 1,000-floor arcade game with a bend-and-release marble launcher. Personal bests and checkpoints every 25 floors are saved in the browser.
 
 [Play RuleReaper](https://caspar5911.github.io/RuleReaper/games/rulereaper/), a shelved prototype about escaping a maze and banning a move. Earlier challenge links still open the correct maze and rules. See its [master plan](docs/MASTER_PLAN.md) for the original design.

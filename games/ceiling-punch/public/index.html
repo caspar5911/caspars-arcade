@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="A one-tap arcade game. Punch through cracked ceilings, chain a double smash, and reach floor six.">
+  <title>Ceiling Punch · Caspar’s Arcade</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main>
+    <a class="home" href="../../">All games</a>
+    <header>
+      <h1>Ceiling <em>Punch</em></h1>
+      <div class="scoreboard" aria-label="Scores">
+        <span>Floor <strong id="floor">0</strong><span> / 6</span></span>
+        <span>Personal best <strong id="best">0</strong></span>
+      </div>
+    </header>
+    <div class="stage">
+      <canvas id="board" width="416" height="348" aria-label="Demolition robot running below two cracked ceilings"></canvas>
+    </div>
+    <button id="strike" type="button" aria-describedby="help">Start run</button>
+    <p id="status" role="status">Break through a crack. Gold marks a double smash.</p>
+    <p id="help">Tap, click, or press Space to punch. You get one pass under each ceiling.</p>
+  </main>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
