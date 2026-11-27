@@ -118,9 +118,15 @@ function guide(ctx, x, top, bottom) {
   ctx.restore();
 }
 
-function drawRobot(ctx, x, y, direction, punch, running, squash) {
+function drawRobot(ctx, x, y, direction, punch, running, squash, spin = 0) {
   ctx.save();
   ctx.translate(x, y);
+  if (spin) {
+    // (tumbling, around its middle)
+    ctx.translate(0, 7);
+    ctx.rotate(spin);
+    ctx.translate(0, -7);
+  }
   ctx.scale(direction, 1);
   if (squash) {
     // (a little squash on landing, from the feet)
@@ -221,14 +227,19 @@ function flash(ctx, text, progress) {
  * Draw the tower around the robot, `height` tower units tall. `time` (seconds) moves the water and the shimmer;
  * `landed` (seconds since the last landing) squashes the robot a little.
  */
-export function drawScene(ctx, run, { reducedMotion = false, time = 0, height = MIN_HEIGHT, landed = 9 } = {}) {
+export function drawScene(ctx, run, { reducedMotion = false, time = 0, height = MIN_HEIGHT, landed = 9, lost = 0 } = {}) {
   const L = layout(height);
   const { robot, cam, progress } = levels(run);
   const smashing = run.phase === 'smash';
   const double = smashing && run.impact.cleared === 2;
-  const shake = smashing && !reducedMotion && progress < .4 ? (1 - progress / .4) * (double ? 8 : 5) : 0;
+  // 💥 losing: `lost` seconds since the run ended (a hard shake, the robot tumbles or sinks, the screen dims)
+  const dead = run.phase === 'lost' ? lost : 0;
+  const flooded = run.phase === 'lost' && run.impact?.reason === 'flooded';
+  const shake = smashing && !reducedMotion && progress < .4 ? (1 - progress / .4) * (double ? 8 : 5)
+    : run.phase === 'lost' && !reducedMotion && dead < .35 ? (1 - dead / .35) * 9 : 0;
   ctx.save();
-  if (shake) ctx.translate(Math.sin(progress * 90) * shake, Math.cos(progress * 70) * shake * .6);
+  const wobble = smashing ? progress : dead * 1.6; // (what drives the shake: the smash, or the time since losing)
+  if (shake) ctx.translate(Math.sin(wobble * 90) * shake, Math.cos(wobble * 70) * shake * .6);
   backdrop(ctx, cam, L);
   const slabY = k => L.base - (k - cam) * L.floorH; // a slab's top surface on screen
   const gold = doubleWindows(run.seed, run.floor);
@@ -244,9 +255,27 @@ export function drawScene(ctx, run, { reducedMotion = false, time = 0, height = 
   if (smashing) burst(ctx, run.impact.x, slabY(run.impact.from + 1), progress, reducedMotion, double);
   const robotY = L.base - 23 - (robot - cam) * L.floorH;
   const squash = !reducedMotion && run.phase === 'running' && landed < .14 ? 1 - landed / .14 : 0;
-  drawRobot(ctx, run.x, robotY, run.direction, smashing && progress < .7, run.phase === 'running', squash);
+  // losing: on concrete it bounces off and tumbles down; in the water it sinks
+  let deadY = 0, spin = 0;
+  if (run.phase === 'lost' && !reducedMotion) {
+    if (flooded) deadY = Math.min(1.2, dead) * 36;
+    else if (dead > .18) {
+      const f = dead - .18;
+      deadY = -60 * f + 700 * f * f; // (a little hop, then down)
+      spin = run.direction * f * 7;
+    }
+  }
+  drawRobot(ctx, run.x, robotY + deadY, run.direction, smashing && progress < .7, run.phase === 'running', squash, spin);
   const close = run.floor - run.flood;
-  drawFlood(ctx, slabY(run.flood), time, reducedMotion, close < .7 && run.phase === 'running', L);
+  // (caught: the water surges up over the robot)
+  const surge = flooded ? Math.min(1, dead * 2.5) * 70 : 0;
+  drawFlood(ctx, slabY(run.flood) - surge, time, reducedMotion, close < .7 && run.phase === 'running', L);
+  if (flooded && !reducedMotion) {
+    for (let i = 0; i < 10; i++) {
+      const rise = ((dead * (60 + i * 9)) + i * 13) % 90;
+      block(ctx, run.x - 18 + (i * 7) % 36, robotY + deadY - rise, 3 + i % 3, 3 + i % 3, '#d8f2ff');
+    }
+  }
   walls(ctx, L);
   ctx.restore();
 
@@ -269,4 +298,17 @@ export function drawScene(ctx, run, { reducedMotion = false, time = 0, height = 
   }
   if (double) flash(ctx, 'DOUBLE! ×2', progress); // (small, near the top: the next ceilings stay clear)
   if (run.phase === 'lost' && run.impact.reason !== 'flooded') drawMiss(ctx, run.impact.x, slabY(run.floor + 1) + SLAB / 2);
+  if (run.phase === 'lost') {
+    // a red flash on concrete, a blue one in the water; then the screen dims behind the result card
+    if (!reducedMotion && dead < .2) {
+      ctx.save();
+      ctx.globalAlpha = (1 - dead / .2) * .35;
+      block(ctx, 0, 0, WIDTH, L.height, flooded ? '#4fb3ff' : '#ff4a3a');
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha = Math.min(.5, dead * .55);
+    block(ctx, 0, 0, WIDTH, L.height, '#05070c');
+    ctx.restore();
+  }
 }
