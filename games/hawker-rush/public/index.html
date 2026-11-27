@@ -4,131 +4,142 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="hawker-rush-build" content="development">
-  <meta name="theme-color" content="#2c1a12">
-  <meta name="description" content="Hawker Rush: run a hawker stall. Build each order yourself (kopi, kaya toast, chicken rice, satay...), serve customers before they lose patience, earn tips, upgrade your stall, and race the leaderboards.">
+  <meta name="theme-color" content="#241d15">
+  <meta name="description" content="Run a hawker stall. Build kopi, kaya toast, chicken rice and satay, then serve customers before they lose patience.">
   <title>Hawker Rush · Caspar’s Arcade</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div class="hud">
-    <a class="icon" id="back" href="../../" aria-label="All games">‹</a>
+  <header class="hud">
+    <a class="icon" id="back" href="../../" aria-label="All games">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12"/></svg>
+    </a>
     <div class="hud-mid"><span id="hudTitle">Hawker Rush</span><span id="hudSub" class="hud-sub"></span></div>
-    <button id="book" class="icon" type="button" aria-label="Recipes">📖</button>
-    <button id="pause" class="icon" type="button" aria-label="Pause" hidden>⏸️</button>
-    <button id="sound" class="icon" type="button" aria-label="Sound on"></button>
-  </div>
+    <button id="book" class="icon" type="button" aria-label="Recipes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a8 8 0 0 0-9-2v13a8 8 0 0 1 9 2 8 8 0 0 1 9-2V5a8 8 0 0 0-9 2v13"/></svg>
+    </button>
+    <button id="pause" class="icon" type="button" aria-label="Pause" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
+    </button>
+    <button id="sound" class="icon" type="button" aria-label="Turn sound off"></button>
+  </header>
 
-  <!-- home -->
   <main id="home" class="page">
-    <div id="homeStall" class="home-stall" aria-hidden="true"></div>
-    <h1>Hawker <em>Rush</em></h1>
-    <p class="intro">Run the stall! Make every order yourself (cup, kopi, milk…), then serve it before your customers lose patience.</p>
-    <button id="play" class="big" type="button">▶ Day 1</button>
-    <div class="row2">
-      <button id="openSpeed" class="tile" type="button"><span>🏁 Speed Run</span><small id="speedBest">Serve 15 customers, fast!</small></button>
-      <button id="openDaily" class="tile" type="button"><span>📅 Daily Rush</span><small id="dailyBest">Same shift for everyone</small></button>
+    <div class="hero">
+      <div id="homeStall" class="home-stall" aria-hidden="true"></div>
+      <h1 id="homeTitle">Hawker <em>Rush</em></h1>
+      <p class="intro">Brew kopi, toast kaya bread and serve the lunch crowd at your own hawker stall.</p>
     </div>
-    <div class="row2">
-      <button id="openShop" class="tile" type="button"><span>🛒 Shop</span><small id="wallet">$0</small></button>
-      <button id="openBoards" class="tile" type="button"><span>🏆 Leaderboards</span><small>See the top players</small></button>
+    <button id="play" class="big" type="button">Play day 1</button>
+    <div class="mode-grid">
+      <button id="openSpeed" class="tile" type="button"><span aria-hidden="true" class="mode-icon">◷</span><span>Speed Run<small id="speedBest">Serve 15 customers</small></span></button>
+      <button id="openDaily" class="tile" type="button"><span aria-hidden="true" class="mode-icon">☀</span><span>Daily Rush<small id="dailyBest">A new shift every day</small></span></button>
+      <button id="openShop" class="tile" type="button"><span aria-hidden="true" class="mode-icon">$</span><span>Shop<small id="wallet">$0</small></span></button>
+      <button id="openBoards" class="tile" type="button"><span aria-hidden="true" class="mode-icon">★</span><span>Leaderboards<small>Weekly and daily scores</small></span></button>
     </div>
-    <h2>Days</h2>
+    <h2>Story days</h2>
     <div id="days" class="days"></div>
   </main>
 
-  <!-- before a shift -->
-  <section id="intro" class="page" hidden>
+  <section id="intro" class="page subpage" aria-labelledby="introTitle" hidden>
     <h2 id="introTitle">Day 1</h2>
-    <div id="introChallenge" class="challenge" hidden></div>
+    <p id="introChallenge" class="challenge" hidden></p>
+    <p id="introTip" class="intro"></p>
     <div id="introNew" class="recipes"></div>
-    <p class="goals" id="introGoals"></p>
-    <p class="intro" id="introTip"></p>
-    <button id="startShift" class="big" type="button">Open the stall!</button>
+    <p id="introGoals" class="goals"></p>
+    <button id="startShift" class="big" type="button">Open the stall</button>
     <button id="introBack" class="link" type="button">Back</button>
   </section>
 
-  <!-- the shift -->
-  <section id="shift" hidden>
+  <section id="shift" aria-label="Stall" hidden>
     <div class="topline">
       <span class="money" id="money">$0</span>
       <div class="goalbar" id="goalbar" aria-hidden="true"><div id="goalFill" class="goal-fill"></div><div id="goalMarks"></div></div>
-      <span class="clock" id="clock">2:00</span>
+      <span id="servedCount" hidden></span>
+      <time class="clock" id="clock">2:00</time>
     </div>
     <div class="scene">
       <div id="awning" class="awning" aria-hidden="true"></div>
       <div class="seats" id="seats" aria-label="Customers"></div>
       <p class="queue" id="queue" aria-live="polite"></p>
     </div>
-    <div class="counter" id="counter" aria-label="Counter: build dishes here"></div>
+    <div class="counter" id="counter" aria-label="Prep spots"></div>
     <p class="hint" id="hint" role="status"></p>
-    <div class="kitchen" id="kitchen" aria-label="Kitchen"></div>
+    <div class="kitchen" id="kitchen" aria-label="Kitchen">
+      <div id="stations" class="stations" aria-label="Cooking stations" hidden></div>
+      <div class="stockroom">
+        <div id="bases" class="bases" aria-label="Cups, plates and bowls"></div>
+        <div id="ingredients" class="ingredients" aria-label="Ingredients"></div>
+      </div>
+    </div>
     <div id="fx" class="fx" aria-hidden="true"></div>
   </section>
 
-  <!-- results -->
-  <section id="results" class="overlay" hidden>
+  <dialog id="results" class="overlay" aria-labelledby="resTitle">
     <div class="card">
-      <p class="res-title" id="resTitle">Shift over!</p>
+      <h2 class="res-title" id="resTitle">Shift over</h2>
       <p class="res-stars" id="resStars"></p>
       <p class="res-money" id="resMoney"></p>
+      <p class="record" id="resRecord" hidden></p>
       <ul class="res-list" id="resList"></ul>
+      <p class="note" id="rankNotice" role="status" hidden></p>
       <form id="saveScore" class="save" hidden>
-        <label for="name">Your name for the leaderboard</label>
-        <div class="row2"><input id="name" maxlength="16" autocomplete="nickname" placeholder="Name" spellcheck="false"><button id="saveBtn" type="submit" class="small-btn">Save</button></div>
+        <label for="name">Your name on the leaderboard</label>
+        <div class="score-form"><input id="name" maxlength="16" autocomplete="nickname" placeholder="Name" spellcheck="false" required><button id="saveBtn" type="submit" class="small-btn">Save</button></div>
         <p id="saveNote" class="note" role="status"></p>
       </form>
-      <button id="resNext" class="big" type="button">Next day ▶</button>
+      <button id="resNext" class="big" type="button">Next day</button>
       <div class="row2">
-        <button id="resRetry" class="ghost" type="button">↻ Again</button>
-        <button id="resChallenge" class="ghost" type="button">📨 Challenge a friend</button>
+        <button id="resRetry" class="ghost" type="button" autofocus>Play again</button>
+        <button id="resChallenge" class="ghost" type="button">Challenge a friend</button>
       </div>
-      <button id="resShop" class="ghost" type="button">🛒 Shop</button>
+      <input id="shareLink" aria-label="Challenge link" readonly hidden>
+      <p id="shareNote" class="note" role="status"></p>
+      <button id="resShop" class="ghost" type="button">Shop</button>
       <button id="resHome" class="link" type="button">Home</button>
     </div>
-  </section>
+  </dialog>
 
-  <!-- the shop -->
-  <section id="shop" class="page" hidden>
-    <h2>🛒 Shop <small id="shopWallet"></small></h2>
-    <p class="intro">Upgrades make your stall faster and your customers happier. Decorations show on your stall!</p>
+  <section id="shop" class="page subpage" aria-labelledby="shopTitle" hidden>
+    <h2 id="shopTitle">Shop <small id="shopWallet"></small></h2>
+    <p class="intro">Spend your story earnings on upgrades and decorations.</p>
     <div id="shopList" class="shop-list"></div>
-    <h2>Decorations</h2>
+    <h3>Decorations</h3>
     <div id="decorList" class="shop-list"></div>
     <button id="shopBack" class="big" type="button">Done</button>
   </section>
 
-  <!-- leaderboards -->
-  <section id="boards" class="page" hidden>
-    <h2>🏆 Leaderboards</h2>
-    <div class="tabs" role="group">
-      <button type="button" data-board="speed" aria-pressed="true">🏁 Speed Run</button>
-      <button type="button" data-board="daily" aria-pressed="false">📅 Daily Rush</button>
+  <section id="boards" class="page subpage" aria-labelledby="boardsTitle" hidden>
+    <h2 id="boardsTitle">Leaderboards</h2>
+    <div class="tabs" role="group" aria-label="Leaderboard mode">
+      <button type="button" data-board="speed" aria-pressed="true">Speed Run</button>
+      <button type="button" data-board="daily" aria-pressed="false">Daily Rush</button>
     </div>
     <p class="intro" id="boardInfo"></p>
     <ol id="boardList" class="board-list"></ol>
-    <p id="boardNote" class="note"></p>
-    <button id="boardRefresh" class="ghost" type="button">🔄 Refresh</button>
-    <button id="boardsBack" class="big" type="button">Back</button>
+    <p id="boardNote" class="note" role="status"></p>
+    <button id="boardRefresh" class="ghost" type="button">Refresh</button>
+    <button id="boardsBack" class="link" type="button">Back</button>
   </section>
 
-  <!-- recipes -->
-  <section id="recipes" class="overlay" hidden>
+  <dialog id="recipes" class="overlay" aria-labelledby="recipeTitle">
     <div class="card">
-      <p class="res-title">📖 Recipes</p>
+      <div class="recipe-header">
+        <h2 class="res-title" id="recipeTitle">Recipes</h2>
+        <button id="recipesClose" class="small-btn" type="button" autofocus>Done</button>
+      </div>
       <div id="recipeList" class="recipes"></div>
-      <button id="recipesClose" class="big" type="button">Got it</button>
     </div>
-  </section>
+  </dialog>
 
-  <!-- paused -->
-  <section id="paused" class="overlay" hidden>
+  <dialog id="paused" class="overlay" aria-labelledby="pauseTitle">
     <div class="card">
-      <p class="res-title">Paused</p>
-      <button id="resume" class="big" type="button">▶ Resume</button>
-      <button id="pausedRecipes" class="ghost" type="button">📖 Recipes</button>
+      <h2 id="pauseTitle" class="res-title">Stall paused</h2>
+      <button id="resume" class="big" type="button" autofocus>Resume shift</button>
+      <button id="pausedRecipes" class="ghost" type="button">Recipes</button>
       <button id="quit" class="link" type="button">Quit this shift</button>
     </div>
-  </section>
+  </dialog>
   <script type="module" src="./app.mjs"></script>
 </body>
 </html>

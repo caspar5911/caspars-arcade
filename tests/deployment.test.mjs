@@ -72,6 +72,14 @@ test('the Pages artifact contains a hub and a versioned RuleReaper game', async 
     assert.ok((await readFile(join(punch, 'assets', '42', asset))).length > 0, asset);
   }
   assert.ok((await readFile(join(punch, 'cover.png'))).length > 0);
+  const hawker = join(output, 'games', 'hawker-rush');
+  const hawkerIndex = await readFile(join(hawker, 'index.html'), 'utf8');
+  assert.match(hub, /href="\.\/games\/hawker-rush\/"/);
+  assert.match(hawkerIndex, /name="hawker-rush-build" content="42"/);
+  assert.match(hawkerIndex, /src="\.\/assets\/42\/app\.mjs"/);
+  for (const asset of ['app.mjs', 'art.mjs', 'competition.mjs', 'engine.mjs', 'feel.mjs', 'style.css']) {
+    assert.ok((await readFile(join(hawker, 'assets', '42', asset))).length > 0, asset);
+  }
 });
 
 test('the leaderboard server comes from the build, never the repo', async t => {

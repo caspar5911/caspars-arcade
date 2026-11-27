@@ -99,6 +99,13 @@ function hiss(type, from, to, seconds, volume, delay = 0, out = master) {
 
 // ---------------------------------------------------------------------------------------------------- sounds
 export const sfx = {
+  base() { buzz(6); if (ready()) { tone('sine', 2200, 2000, .06, .09); tone('sine', 3300, 3100, .05, .04); } },
+  add(liquid) {
+    buzz(8);
+    if (!ready()) return;
+    if (liquid) hiss('bandpass', 1200, 500, .22, .3); // (a pour)
+    else tone('sine', 380, 220, .09, .14); // (a plop)
+  },
   cook() { buzz(8); if (ready()) { tone('square', 520, 380, .06, .06); hiss('highpass', 3000, 2000, .1, .08); } },
   ready() { if (ready()) { tone('sine', 1320, 1320, .12, .12); tone('sine', 1760, 1760, .1, .08, .07); } },
   serve() { buzz(10); if (ready()) { hiss('bandpass', 1400, 500, .15, .25); tone('triangle', 660, 880, .08, .1); } },
