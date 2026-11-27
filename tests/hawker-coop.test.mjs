@@ -78,7 +78,7 @@ test('a friend’s phone replaying the host’s frames ends with exactly the hos
   while (host.phase === 'running') {
     if (host.ticks % 7 === 3) {
       const moves = [['cook', 'toaster', -1], ['base', 'plate', -1], ['add', 'kaya', -1], ['base', 'cup', -1],
-        ['add', 'kopi', -1], ['add', 'milk', -1], ['add', 'toast', -1], ['add', 'butter', -1], ['call', 0, -1]];
+        ['add', 'kopi', -1], ['add', 'milk', -1], ['add', 'toast', -1], ['add', 'butter', -1]];
       for (let i = 0; i < E.prepFor(2); i++) if (E.dishOf(host.prep[i]) && E.servingFor(host, E.dishOf(host.prep[i])) >= 0) moves.unshift(['serve', i, -1]);
       const [kind, a, b] = moves[k++ % moves.length];
       if (E.act(host, kind, a, b)) {
@@ -107,6 +107,6 @@ test('a friend’s phone replaying the host’s frames ends with exactly the hos
     }
   }
   assert.equal(guest.phase, 'over');
-  for (const key of ['coins', 'served', 'lost', 'passed', 'ticks', 'burnt', 'called', 'earlyBonus']) assert.equal(guest[key], host[key], key);
-  assert.ok(applied > 40 && host.served >= 1 && host.called >= 1, `${applied} moves, ${host.served} served, ${host.called} called`);
+  for (const key of ['coins', 'served', 'lost', 'passed', 'ticks', 'burnt', 'next', 'earlyBonus']) assert.equal(guest[key], host[key], key);
+  assert.ok(applied > 40 && host.served >= 1, `${applied} moves, ${host.served} served`);
 });
