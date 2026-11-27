@@ -14,6 +14,10 @@ const games = join(source, 'games');
 const assetUrl = './assets/' + version;
 const manifest = JSON.stringify({ build }) + '\n';
 const statuses = { prototype: 'Playable prototype', playable: 'Playable', archived: 'Shelved prototype' };
+const versioned = new Map([
+  ['rulereaper', { modules: 'src', meta: 'rulereaper-build' }],
+  ['snap-ruler', { modules: '', meta: 'snap-ruler-build' }],
+]);
 
 async function hasFile(path) {
   try {
@@ -24,20 +28,22 @@ async function hasFile(path) {
   }
 }
 
-async function buildRuleReaper(publicFiles, target) {
+async function buildVersionedGame(publicFiles, target, { modules, meta }) {
   const assets = join(target, 'assets', version);
   await mkdir(assets, { recursive: true });
-  const modules = await readdir(join(publicFiles, 'src'));
-  for (const file of modules.filter(name => name.endsWith('.mjs'))) {
-    await copyFile(join(publicFiles, 'src', file), join(assets, file));
+  const moduleDirectory = join(publicFiles, modules);
+  const entries = await readdir(moduleDirectory, { withFileTypes: true });
+  for (const entry of entries.filter(file => file.isFile() && file.name.endsWith('.mjs'))) {
+    await copyFile(join(moduleDirectory, entry.name), join(assets, entry.name));
   }
   await copyFile(join(publicFiles, 'style.css'), join(assets, 'style.css'));
 
   const index = await readFile(join(publicFiles, 'index.html'), 'utf8');
+  const app = modules ? './' + modules + '/app.mjs' : './app.mjs';
   const page = index
-    .replace('name="rulereaper-build" content="development"', 'name="rulereaper-build" content="' + build + '"')
+    .replace('name="' + meta + '" content="development"', 'name="' + meta + '" content="' + build + '"')
     .replace('./style.css', assetUrl + '/style.css')
-    .replace('./src/app.mjs', assetUrl + '/app.mjs');
+    .replace(app, assetUrl + '/app.mjs');
   await writeFile(join(target, 'index.html'), page);
   await writeFile(join(target, 'version.json'), manifest);
 }
@@ -93,8 +99,8 @@ for (const entry of gameFolders.sort((a, b) => a.name.localeCompare(b.name))) {
     throw new Error('Missing games/' + slug + '/public/index.html.');
   }
   const cover = await hasFile(join(publicFiles, 'cover.png'));
-  if (slug === 'rulereaper') {
-    await buildRuleReaper(publicFiles, target);
+  if (versioned.has(slug)) {
+    await buildVersionedGame(publicFiles, target, versioned.get(slug));
     if (cover) await copyFile(join(publicFiles, 'cover.png'), join(target, 'cover.png'));
   } else {
     await cp(publicFiles, target, { recursive: true, filter: publicAsset });

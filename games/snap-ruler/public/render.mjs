@@ -1,10 +1,12 @@
-import { aim, bendAt, FINAL_FLOOR, project, RULERS, WIDTH } from './engine.mjs';
+import { aim, bendAt, FINAL_FLOOR, preview, project, RULERS, WIDTH } from './engine.mjs';
+
+import { CHECKPOINT_STEP } from './progress.mjs';
 
 export const HEIGHT = 418;
 const BASE = HEIGHT - 76;
 const MARBLE = 9;
 
-function drawRuler(ctx, ruler, screenY, charge, active) {
+function drawRuler(ctx, ruler, screenY, charge, active, canSkip) {
   const y = screenY(ruler.y);
   const goal = ruler.floor === FINAL_FLOOR;
   const wood = active ? '#ffce68' : goal ? '#c9f6bb' : '#c39867';
@@ -43,6 +45,23 @@ function drawRuler(ctx, ruler, screenY, charge, active) {
     ctx.stroke();
   }
 
+  if (canSkip && ruler.skip) {
+    const [left, right] = ruler.skip;
+    ctx.strokeStyle = '#aee6dc';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(left, y - 4);
+    ctx.lineTo(right, y - 4);
+    ctx.stroke();
+    ctx.font = '800 12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#aee6dc';
+    ctx.fillText('+2', (left + right) / 2, y - 23);
+  }
+  if (active) {
+    ctx.fillStyle = '#fff2bc';
+    ctx.fillRect(ruler.start - 2, yAt(ruler.start) + 5, 4, 7);
+  }
   ctx.fillStyle = active ? '#fff2bc' : '#807291';
   ctx.fillRect(ruler.clamp - 6, y - 10, 13, 24);
   ctx.fillStyle = '#2e2343';
@@ -50,27 +69,39 @@ function drawRuler(ctx, ruler, screenY, charge, active) {
   ctx.font = '700 12px system-ui';
   ctx.textAlign = ruler.direction === 1 ? 'left' : 'right';
   ctx.fillStyle = goal || active ? wood : '#cabbde';
-  ctx.fillText(goal ? '10 · Top' : String(ruler.floor), ruler.clamp + 11 * ruler.direction, y + 26);
+  const label = goal ? '1,000 · Top' : ruler.floor > 0 && ruler.floor % CHECKPOINT_STEP === 0
+    ? ruler.floor + ' · Checkpoint' : String(ruler.floor);
+  ctx.fillText(label, ruler.clamp + 11 * ruler.direction, y + 26);
 }
 
 function drawGuide(ctx, run, screenY) {
   const shot = aim(run);
-  const count = run.floor < 2 ? 12 : 5;
-  for (let index = 1; index <= count; index++) {
-    const point = project(shot, index * .06);
-    ctx.globalAlpha = .85 * (1 - index / (count + 2));
-    ctx.fillStyle = '#d7fff0';
+  const landing = preview(run, shot);
+  const hit = landing.floor !== null;
+  const color = hit ? '#d7fff0' : '#ffd0a3';
+  ctx.fillStyle = color;
+  for (let index = 1; index < 17; index++) {
+    const point = project(shot, landing.time * index / 17);
+    ctx.globalAlpha = .5 + .3 * index / 17;
     ctx.beginPath();
     ctx.arc(point.x, screenY(point.y) - MARBLE, index % 3 === 0 ? 3 : 2, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+  if (!hit) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(landing.x, screenY(landing.y) - MARBLE, 8, 0, Math.PI * 2);
+  ctx.stroke();
 }
+
+const towerColors = ['#2b2141', '#332343', '#203a49', '#462438', '#242d4c'];
 
 export function drawArena(ctx, run, { camera, best, flash }) {
   const screenY = world => BASE - world + camera;
   const fill = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-  fill.addColorStop(0, run.floor >= 7 ? '#392244' : '#2b2141');
+  fill.addColorStop(0, towerColors[Math.floor(run.floor / 100) % towerColors.length]);
   fill.addColorStop(1, '#1d162d');
   ctx.fillStyle = fill;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -105,11 +136,14 @@ export function drawArena(ctx, run, { camera, best, flash }) {
     }
   }
 
-  for (const ruler of RULERS) {
+  const first = Math.max(0, run.floor - 2);
+  const last = Math.min(FINAL_FLOOR, run.floor + 8);
+  for (let floor = first; floor <= last; floor++) {
+    const ruler = RULERS[floor];
     const y = screenY(ruler.y);
     if (y < -45 || y > HEIGHT + 45) continue;
-    const active = ruler.floor === run.floor;
-    drawRuler(ctx, ruler, screenY, active ? run.charge : 0, active);
+    const active = floor === run.floor;
+    drawRuler(ctx, ruler, screenY, active ? run.charge : 0, active, floor === run.floor + 2);
   }
 
   if (run.holding) drawGuide(ctx, run, screenY);

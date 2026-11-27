@@ -53,4 +53,12 @@ test('the Pages artifact contains a hub and a versioned RuleReaper game', async 
   for (const asset of ['app.mjs', 'challenges.mjs', 'engine.mjs', 'updates.mjs', 'style.css']) {
     assert.ok((await readFile(join(game, 'assets', '42', asset))).length > 0, asset);
   }
+  const snap = join(output, 'games', 'snap-ruler');
+  const snapIndex = await readFile(join(snap, 'index.html'), 'utf8');
+  assert.match(snapIndex, /name="snap-ruler-build" content="42"/);
+  assert.match(snapIndex, /src="\.\/assets\/42\/app\.mjs"/);
+  assert.match(snapIndex, /1,000/);
+  for (const asset of ['app.mjs', 'engine.mjs', 'progress.mjs', 'render.mjs', 'style.css']) {
+    assert.ok((await readFile(join(snap, 'assets', '42', asset))).length > 0, asset);
+  }
 });
