@@ -1,10 +1,11 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { availableBuild, reloadUrl } from '../src/updates.mjs';
+import { availableBuild, reloadUrl } from '../games/rulereaper/public/src/updates.mjs';
+import { legacyGameUrl } from '../hub/legacy.mjs';
 
 test('only a newer valid release offers a reload', () => {
   assert.equal(availableBuild('41', { build: 42 }), 42);
@@ -14,23 +15,42 @@ test('only a newer valid release offers a reload', () => {
   assert.equal(availableBuild('development', { build: 42 }), null);
 });
 
-test('the update reload keeps the challenge and requests a fresh document', () => {
-  const current = 'https://example.com/RuleReaper/?v=41#v2=tutorial:RR';
-  assert.equal(reloadUrl(current, 42), 'https://example.com/RuleReaper/?v=42#v2=tutorial:RR');
+test('the update reload keeps the game path and challenge', () => {
+  const current = 'https://example.com/RuleReaper/games/rulereaper/?v=41#v2=tutorial:RR';
+  assert.equal(reloadUrl(current, 42), 'https://example.com/RuleReaper/games/rulereaper/?v=42#v2=tutorial:RR');
 });
 
-test('a Pages build stamps the document, serves the manifest and ships versioned modules', async t => {
-  const output = await mkdtemp(join(tmpdir(), 'rule-reaper-build-'));
+test('old challenge links and reload links reach the game without losing parameters', () => {
+  const base = 'https://example.com/RuleReaper/';
+  for (const tail of ['#v1=LD', '#v2=tutorial:RR', '?v=10', '?v=42#v2=tutorial:RR']) {
+    assert.equal(legacyGameUrl(base + tail), base + 'games/rulereaper/' + tail);
+  }
+  assert.equal(legacyGameUrl(base), null);
+  assert.equal(legacyGameUrl(base + '#games'), null);
+});
+
+test('the Pages artifact contains a hub and a versioned RuleReaper game', async t => {
+  const output = await mkdtemp(join(tmpdir(), 'arcade-build-'));
   t.after(() => rm(output, { recursive: true }));
   const result = spawnSync(process.execPath, ['scripts/build-pages.mjs', '42', output], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  const manifest = JSON.parse(await readFile(join(output, 'version.json'), 'utf8'));
-  const index = await readFile(join(output, 'index.html'), 'utf8');
-  assert.deepEqual(manifest, { build: 42 });
+
+  const hub = await readFile(join(output, 'index.html'), 'utf8');
+  assert.match(hub, /<h1>Caspar.s Arcade<\/h1>/);
+  assert.match(hub, /href="\.\/games\/rulereaper\/"/);
+  assert.match(hub, /src="\.\/assets\/42\/legacy\.mjs"/);
+  assert.ok((await readFile(join(output, 'games', 'rulereaper', 'cover.png'))).length > 0);
+
+  const game = join(output, 'games', 'rulereaper');
+  const index = await readFile(join(game, 'index.html'), 'utf8');
   assert.match(index, /name="rulereaper-build" content="42"/);
-  assert.match(index, /href="\.\/assets\/42\/style\.css"/);
   assert.match(index, /src="\.\/assets\/42\/app\.mjs"/);
+  assert.match(index, /href="\.\.\/\.\.\/"[^>]*>All games/);
+  for (const path of [output, game]) {
+    const manifest = JSON.parse(await readFile(join(path, 'version.json'), 'utf8'));
+    assert.deepEqual(manifest, { build: 42 });
+  }
   for (const asset of ['app.mjs', 'challenges.mjs', 'engine.mjs', 'updates.mjs', 'style.css']) {
-    assert.ok((await readFile(join(output, 'assets', '42', asset))).length > 0, asset);
+    assert.ok((await readFile(join(game, 'assets', '42', asset))).length > 0, asset);
   }
 });

@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color-scheme: dark;
   --bg: #0c1019;
   --panel: #171e2b;
@@ -89,4 +89,12 @@ button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 360px) {
   .panel { padding: 11px; }
   .grid { gap: 4px; }
+}
+.hub-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--accent);
+  font-weight: 700;
+  text-underline-offset: .25em;
 }

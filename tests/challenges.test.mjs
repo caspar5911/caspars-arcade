@@ -1,7 +1,7 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOARDS, TUTORIAL, parseChallenge, challengeHash, ruleLabel } from '../src/challenges.mjs';
-import { candidates, checkPath, solve } from '../src/engine.mjs';
+import { BOARDS, TUTORIAL, parseChallenge, challengeHash, ruleLabel } from '../games/rulereaper/public/src/challenges.mjs';
+import { candidates, checkPath, solve } from '../games/rulereaper/public/src/engine.mjs';
 
 test('the tutorial shortcut can be broken and escaped by a different route', () => {
   const shortcut = [0, 1, 2, 3, 4];
