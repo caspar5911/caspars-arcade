@@ -5,7 +5,7 @@ import {
   DISHES, INGREDIENTS, STATIONS, UPGRADES, DECOR, menuFor, newOn, kitchenFor, schedule,
   goals, starsFor, createShift, dishOf, couldBe, placeBase, addIngredient, cook, binBurnt,
   binDish, serve, servingFor, step, progress, speedTime, act, replay, daily, dayKey, speedRun, upgradeCost,
-  WAVES, canCall, callNext, CALL_AHEAD, EARLY_BONUS, seatsFor, prepFor,
+  WAVES, WALK_IN, EARLY_BONUS, seatsFor, prepFor,
 } from '../games/hawker-rush/public/engine.mjs';
 
 function advance(s, seconds) {
@@ -224,24 +224,35 @@ test('a shift comes in waves: busier in the lunch and dinner rushes, someone wai
   assert.deepEqual(waves, ['lunch', 'breather', 'dinner', 'closing']);
 });
 
-test('the bell calls in the next customer early (they tip more), only when there is room and they are due soon', () => {
-  const s = createShift({ day: 3, seed: 'bell' });
-  advance(s, 2);
-  assert.equal(s.seats.filter(Boolean).length, 1);
+test('a free seat fills by itself: the next customer due soon walks straight in (not in a speed run)', () => {
+  const s = createShift({ day: 3, seed: 'walk-in' });
+  step(s);
+  // at opening every seat is free: everyone due within WALK_IN seconds sits down at once
+  const due = s.arrivals.filter(p => p.at <= s.t + WALK_IN).length;
+  assert.equal(s.seats.filter(Boolean).length, Math.min(s.seats.length, due));
+  // serve someone: their seat soon takes the next customer due, well before their timetable says
+  const c = s.seats.findIndex(Boolean);
+  for (const d of s.seats[c].order) {
+    act(s, 'base', DISHES[d].base, -1);
+    for (const i of DISHES[d].has) if (!INGREDIENTS[i].cooked) act(s, 'add', i, -1);
+    if (DISHES[d].has.some(i => INGREDIENTS[i].cooked)) {
+      for (const i of DISHES[d].has.filter(x => INGREDIENTS[x].cooked)) {
+        act(s, 'cook', INGREDIENTS[i].cooked);
+        advance(s, 4.5);
+        act(s, 'add', i, -1);
+      }
+    }
+    act(s, 'serve', s.prep.findIndex(x => dishOf(x) === d), c);
+  }
   const next = s.arrivals[s.next];
-  assert.equal(canCall(s), next.at <= s.t + CALL_AHEAD);
-  if (!canCall(s)) advance(s, next.at - CALL_AHEAD - s.t + .1);
-  assert.ok(canCall(s));
-  const before = s.next;
-  assert.equal(act(s, 'call', 0), true);
-  assert.equal(s.next, before + 1);
-  assert.equal(s.called, 1);
-  assert.equal(s.seats.find(c => c && c.id === next.id).called, true);
-  assert.equal(act(s, 'call', 1), false, 'only the plain bell action');
-  // (no bell in a speed run)
+  advance(s, 1.5);
+  if (next.at > s.t + WALK_IN) assert.equal(s.next, s.arrivals.indexOf(next), 'not called in too early');
+  else assert.ok(s.seats.some(x => x && x.id === next.id), 'walked in early');
+  assert.equal(act(s, 'call', 0), false, 'no bell');
+  // a speed run keeps its fixed line
   const speed = createShift(speedRun(new Date('2026-11-30T12:00:00Z')).spec);
-  assert.equal(canCall(speed), false);
-  assert.equal(callNext(speed), false);
+  step(speed);
+  assert.equal(speed.seats.filter(Boolean).length, speed.arrivals.filter(p => p.at <= speed.t).length);
 });
 
 test('serving everyone closes the stall early, with a bonus for the time left (less if some left unhappy)', () => {
@@ -254,7 +265,7 @@ test('serving everyone closes the stall early, with a bonus for the time left (l
         for (const i of DISHES[d].has) act(s, 'add', i, -1);
         act(s, 'serve', s.prep.findIndex(Boolean), c);
       }
-    } else if (canCall(s)) act(s, 'call', 0);
+    }
     step(s);
   }
   assert.equal(s.phase, 'over');
@@ -287,5 +298,5 @@ test('the leaderboard server replays with this exact copy of the rules', async (
   const { createHash } = await import('node:crypto');
   const { readFile } = await import('node:fs/promises');
   const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
-  assert.equal(createHash('sha256').update(text).digest('hex'), '5115b73a9ebcb1a37508cd17717a10ac5ba966ad58103ad62e98872506d6a442');
+  assert.equal(createHash('sha256').update(text).digest('hex'), '22b35755102271b44f6e2052cd15d66f3da4b3abcc1d5497215d763337ee5491');
 });

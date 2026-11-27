@@ -1,8 +1,8 @@
 // Hawker Rush (v3): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
 // step: a cup, then kopi, then condensed milk; a plate, then toast from the toaster (it burns!), kaya and butter...
 // then serve it to the customer. Quick service earns tips; serving in a row builds a combo.
-// A shift comes in waves (a quiet open, the lunch rush, a breather, the dinner rush); quick players can ring the bell to
-// call the next customer in early, and close early for a bonus.
+// A shift comes in waves (a quiet open, the lunch rush, a breather, the dinner rush). A free seat never sits empty for
+// long: the next customer due soon walks straight in, so quick players get busier, and can close early for a bonus.
 // Deterministic: a seed and the list of actions replay exactly (for checked leaderboards).
 
 export const TICK = 1 / 30;
@@ -14,8 +14,7 @@ export const SPEED_CUSTOMERS = 15; // a speed run: serve them all, as fast as yo
 export const MAX_PLAYERS = 4; // co-op: friends sharing one stall
 // the waves of a shift: [from second, busyness] (busyness: customers per second, relative)
 export const WAVES = [[0, .9, 'open'], [20, 1.9, 'lunch'], [55, .7, 'breather'], [70, 1.6, 'dinner'], [SHIFT - 20, 0, 'closing']];
-export const CALL_TIP = 1.25; // a customer you called in early tips 25% more
-export const CALL_AHEAD = 12; // the bell calls in someone due within this many seconds
+export const WALK_IN = 15; // a free seat (and nobody queuing): the next customer due within this many seconds sits down
 export const EARLY_BONUS = .15; // closing early: up to this much per second left on the clock (all served)
 
 // ---------------------------------------------------------------------------------------------------- the kitchen
@@ -238,7 +237,7 @@ export function createShift(spec = {}) {
     prep: Array.from({ length: prepFor(players, upgrades) }, () => null),
     stations,
     coins: 0, tips: 0, served: 0, dishes: 0, lost: 0, passed: 0, burnt: 0, wasted: 0, combo: 0, bestCombo: 0,
-    called: 0, early: 0, earlyBonus: 0,
+    early: 0, earlyBonus: 0,
     goal: goals(people),
     events: [],
   };
@@ -406,7 +405,7 @@ function pay(shift, seat) {
   const c = shift.seats[seat];
   const base = c.order.reduce((s, d) => s + DISHES[d].price, 0);
   const quick = Math.max(0, c.left / c.patience);
-  const tip = base * .6 * quick * (1 + .2 * (shift.upgrades.tipjar ?? 0)) * (c.called ? CALL_TIP : 1);
+  const tip = base * .6 * quick * (1 + .2 * (shift.upgrades.tipjar ?? 0));
   const combo = 1 + Math.min(.5, shift.combo * .1);
   const amount = round2((base + tip) * combo);
   shift.coins = round2(shift.coins + amount);
@@ -419,27 +418,11 @@ function pay(shift, seat) {
   shift.events.push({ type: 'paid', seat, amount, combo: shift.combo, perfect: quick > .6 });
 }
 
-function seatSomeone(shift, person, called = false) {
+function seatSomeone(shift, person) {
   const free = shift.seats.indexOf(null);
   if (free < 0) return false;
-  shift.seats[free] = { ...person, left: person.patience, got: person.order.map(() => false), since: shift.t, called };
-  shift.events.push({ type: 'arrive', seat: free, called });
-  return true;
-}
-
-/** Whether the bell can call the next customer in now (a free seat, nobody queuing, someone due soon). */
-export function canCall(shift) {
-  return shift.phase === 'running' && shift.mode !== 'speed' && shift.next < shift.arrivals.length &&
-    shift.arrivals[shift.next].at <= shift.t + CALL_AHEAD && !shift.queue.length && shift.seats.includes(null);
-}
-
-/** Ring the bell: the next customer comes in now (and tips a little more for it). */
-export function callNext(shift) {
-  if (!canCall(shift)) return false;
-  const p = shift.arrivals[shift.next++];
-  seatSomeone(shift, p, true);
-  shift.called++;
-  shift.events.push({ type: 'call' });
+  shift.seats[free] = { ...person, left: person.patience, got: person.order.map(() => false), since: shift.t };
+  shift.events.push({ type: 'arrive', seat: free });
   return true;
 }
 
@@ -483,6 +466,9 @@ export function step(shift) {
     }
   });
   while (shift.queue.length && shift.seats.includes(null)) seatSomeone(shift, shift.queue.shift());
+  // a free seat and nobody queuing: whoever is due soon walks straight in (no waiting around for the clock)
+  while (shift.mode !== 'speed' && !shift.queue.length && shift.seats.includes(null) && shift.next < shift.arrivals.length &&
+         shift.arrivals[shift.next].at <= shift.t + WALK_IN) seatSomeone(shift, shift.arrivals[shift.next++]);
   for (const [id, st] of Object.entries(shift.stations)) {
     st.slots.forEach((it, k) => {
       if (!it) return;
@@ -530,7 +516,7 @@ export function speedTime(shift) {
 /**
  * Every player action, as recorded for a replay: [tick, kind, a, b].
  * kinds: 'base' (base, spot), 'add' (ingredient, spot), 'cook' (station), 'serve' (spot, seat),
- * 'bin-dish' (spot), 'bin-burnt' (station), 'call' (0: ring the bell).
+ * 'bin-dish' (spot), 'bin-burnt' (station).
  */
 export function act(shift, kind, a, b = -1) {
   switch (kind) {
@@ -540,7 +526,6 @@ export function act(shift, kind, a, b = -1) {
     case 'serve': return serve(shift, a, b);
     case 'bin-dish': return binDish(shift, a);
     case 'bin-burnt': return binBurnt(shift, a);
-    case 'call': return a === 0 && callNext(shift);
     default: return false;
   }
 }

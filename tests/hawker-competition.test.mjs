@@ -48,7 +48,7 @@ test('online scores use the dated server ticket and the complete action log', as
     const name = url.replace('https://arcade.example/base/ai/arcade/hawker-rush/', '');
     const body = JSON.parse(options.body);
     requests.push([name, body]);
-    if (name === 'ticket') return Response.json({ mode: 'daily', period: dailyKey, engine: 2, ticket: 'test-ticket' });
+    if (name === 'ticket') return Response.json({ mode: 'daily', period: dailyKey, engine: 3, ticket: 'test-ticket' });
     const data = { mode: 'daily', period: dailyKey, entries: [{ name: 'Mei', place: 1, value: 650 }] };
     return Response.json(name === 'score' ? { ...data, saved: true, name: 'Mei', value: 650 } : data);
   });
@@ -65,9 +65,9 @@ test('online scores use the dated server ticket and the complete action log', as
   assert.deepEqual((await readBoard('daily', dailyKey)).entries, result.entries);
   await assert.rejects(() => readBoard('daily', '2026-11-28'), /no longer available/);
   assert.deepEqual(requests.slice(1), [
-    ['ticket', { mode: 'daily', engine: 2 }],
-    ['ticket', { mode: 'speed', engine: 2 }],
-    ['score', { ticket: 'test-ticket', engine: 2, mode: 'daily', period: dailyKey, actions, name: 'Mei', value: 650 }],
+    ['ticket', { mode: 'daily', engine: 3 }],
+    ['ticket', { mode: 'speed', engine: 3 }],
+    ['score', { ticket: 'test-ticket', engine: 3, mode: 'daily', period: dailyKey, actions, name: 'Mei', value: 650 }],
     ['top', { mode: 'daily' }],
     ['top', { mode: 'daily' }],
   ]);

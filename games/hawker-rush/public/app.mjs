@@ -5,7 +5,6 @@ import * as Co from './coop.mjs';
 import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
 
 const $ = id => document.getElementById(id);
-const bellButton = document.getElementById('bell'); // (kept: the counter is rebuilt each shift)
 const SAVE_KEY = 'hawker-rush-save';
 const pages = ['home', 'intro', 'shift', 'shop', 'boards', 'coop'];
 const stationActions = { toaster: 'Toast bread', pot: 'Boil eggs', grill: 'Grill satay' };
@@ -270,7 +269,6 @@ function buildCounter() {
     counter.append(wrap);
     return { wrap, el, bin, art: el.querySelector('.prep-art'), name: el.querySelector('.prep-name') };
   });
-  counter.append(bellButton);
   return views;
 }
 
@@ -987,8 +985,6 @@ function renderHint() {
   }
   if (run.mode !== 'speed' && shift.next >= shift.arrivals.length) {
     message = 'Last customers! Serve them all to close early for a bonus.';
-  } else if (run.mode !== 'speed' && E.canCall(shift) && run.selected < 0 && !shift.prep.some(Boolean)) {
-    message = 'Quiet moment? Ring the bell to call the next customer in (they tip more).';
   }
   setText($('hint'), hintOverride && shift.t < hintOverride.until ? hintOverride.text : guided ?? message);
 }
@@ -1013,11 +1009,6 @@ function render() {
   renderStations();
   renderNext();
   renderHint();
-  const bell = bellButton;
-  bell.hidden = run.mode === 'speed' || run.guided;
-  const canCall = E.canCall(shift);
-  bell.disabled = !canCall;
-  bell.classList.toggle('ready', canCall);
   setContent($('cat'), Art.cat(catMood()));
   const wave = E.WAVES[shift.wave]?.[2];
   $('shift').classList.toggle('rush', wave === 'lunch' || wave === 'dinner');
@@ -1094,9 +1085,7 @@ function handleEvents() {
     switch (event.type) {
       case 'arrive':
         F.sfx.arrive();
-        if (event.called) float('Called in!', seat, 'good');
         break;
-      case 'call': F.sfx.ding(); break;
       case 'wave': {
         const text = { lunch: 'Lunch rush!', breather: 'Phew… a breather', dinner: 'Dinner rush!', closing: 'Last orders!' }[event.wave];
         if (text) banner(text, event.wave === 'breather' ? '' : 'bad');
@@ -1286,7 +1275,6 @@ function renderResults() {
   if (mode === 'speed' && lost + passed) rows.push(['Time penalty', `+${10 * (lost + passed)} s`]);
   rows.push(['Tips and combos', money(tips)]);
   if (shift.early) rows.push(['Closed early', `${shift.early} s early · +${money(shift.earlyBonus)}`]);
-  if (shift.called) rows.push(['Customers called in', shift.called]);
   if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
   if (burnt) rows.push(['Food burnt', burnt]);
   if (wasted) rows.push(['Dishes binned', wasted]);
@@ -1535,7 +1523,6 @@ $('shopBack').addEventListener('click', () => {
     home();
   }
 });
-bellButton.addEventListener('click', () => action('call', 0));
 $('pause').addEventListener('click', pause);
 $('resume').addEventListener('click', () => closeDialog('paused'));
 $('quit').addEventListener('click', () => home());
