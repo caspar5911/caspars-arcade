@@ -1,4 +1,4 @@
-# RuleReaper
+﻿# RuleReaper
 
 **Win the puzzle. Reap a rule. Challenge the next player.**
 
@@ -6,7 +6,7 @@ RuleReaper is an asynchronous competitive puzzle game: every successful player m
 
 ## Project status
 
-P0 local-first playable prototype. Global chains, accounts, payments and analytics are not implemented. Share links contain local rule sets only.
+The [P0 browser demo](https://caspar5911.github.io/RuleReaper/) includes a tutorial rematch and three mazes. Challenge links include the maze and its rules. Global chains, accounts, payments and analytics are not implemented.
 
 ## Agent entry point
 
@@ -16,7 +16,7 @@ Read [AGENTS.md](AGENTS.md) and [the master plan](docs/MASTER_PLAN.md) before st
 
 Static browser client, deterministic puzzle engine, exact bounded solver, and later a transactional PostgreSQL-backed API. No live AI inference during gameplay.
 
-No paid services or deployments are authorized by this repository initialization.
+The GitHub Pages demo publishes from main after tests pass. The game offers a tap-to-reload button when it detects a newer release.
 
 ## Run locally
 
@@ -27,4 +27,4 @@ node --test
 python3 -m http.server 8080
 ```
 
-Open http://localhost:8080. Use arrows or tap cells. Win, choose a verified restriction, then copy the next challenge link. No npm install required. The project is not yet deployed. See [master plan](docs/MASTER_PLAN.md) for viral growth, profitability and production gates.
+Open http://localhost:8080. Use arrows or tap cells. Win, choose a verified restriction, then copy the next challenge link. No npm install required. See [master plan](docs/MASTER_PLAN.md) for viral growth, profitability and production gates.

@@ -1,8 +1,53 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Win the puzzle. Reap a rule. Challenge a friend."><title>RuleReaper — Win. Reap. Repeat.</title><link rel="stylesheet" href="./style.css"></head>
-<body><main><header><p class="eyebrow">THE RULES NEVER STAY THE SAME</p><h1>Rule<span>Reaper</span></h1><p class="tagline">Escape the grid. Ban a move pattern. Challenge the next player.</p></header>
-<section class="panel" aria-label="Puzzle"><div class="stats"><div><small>GENERATION</small><strong id="generation">0</strong></div><div><small>MOVES</small><strong id="moves">0</strong></div><div><small>RULES REAPED</small><strong id="count">0 / 8</strong></div></div>
-<div id="rules" class="rules"></div><p class="help">Tap an adjacent tile or use arrow keys. No revisits. Reach the exit, then ban a pair of moves you used.</p><div id="grid" class="grid" aria-label="5 by 5 puzzle"></div><p id="status" role="status" aria-live="polite"></p><div class="actions"><button id="undo">Undo</button><button id="reset">Restart</button><button id="fresh">New chain</button></div></section>
-<section id="win" class="panel win" hidden><h2>You escaped.</h2><p>Choose a pair to forbid. Your old solution will no longer work, but another must survive.</p><div id="choices" class="choices"></div><p id="reapStatus" role="status"></p></section>
-<section class="panel"><h2>Challenge a friend</h2><p>Send this exact rule set. Can they escape what you created?</p><button id="share" class="primary">Copy challenge link</button><input id="shareLink" aria-label="Challenge link" readonly><p id="shareStatus" role="status"></p></section>
-<footer>Local prototype · No account, global ranking, or AI required.</footer></main><script type="module" src="./src/app.mjs"></script></body></html>
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Escape the maze, ban a move, and challenge a friend.">
+  <meta name="rulereaper-build" content="development">
+  <title>RuleReaper</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Rule<span>Reaper</span></h1>
+      <p class="tagline">Escape the maze. Ban a move. Make the next escape harder.</p>
+      <button id="reloadVersion" class="update" hidden>A new version is out. Tap to reload.</button>
+    </header>
+    <nav id="mazes" class="mazes" aria-label="Choose a maze"></nav>
+    <section class="panel" aria-labelledby="mazeTitle">
+      <div class="puzzle-heading">
+        <h2 id="mazeTitle" tabindex="-1"></h2>
+        <div class="stats">
+          <span>Moves <strong id="moves">0</strong></span>
+          <span>Rules <strong id="count">0 / 8</strong></span>
+        </div>
+      </div>
+      <div id="rules" class="rules" aria-label="Banned moves"></div>
+      <p id="help" class="help"></p>
+      <div id="grid" class="grid" aria-label="5 by 5 maze"></div>
+      <p id="status" role="status"></p>
+      <div class="actions">
+        <button id="undo">Undo</button>
+        <button id="reset">Restart route</button>
+        <button id="fresh">Clear rules</button>
+      </div>
+    </section>
+    <section id="win" class="panel win" hidden aria-labelledby="winTitle">
+      <h2 id="winTitle" tabindex="-1">You escaped.</h2>
+      <p id="winHelp"></p>
+      <div id="choices" class="choices"></div>
+      <button id="nextMaze" class="primary" hidden></button>
+    </section>
+    <section class="panel">
+      <h2>Challenge a friend</h2>
+      <p>Send them this maze with your current rules.</p>
+      <button id="share" class="primary">Copy challenge link</button>
+      <input id="shareLink" aria-label="Challenge link" readonly>
+      <p id="shareStatus" role="status" hidden></p>
+    </section>
+  </main>
+  <script type="module" src="./src/app.mjs"></script>
+</body>
+</html>
