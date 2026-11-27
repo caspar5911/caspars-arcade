@@ -19,6 +19,7 @@ const saveNote = document.getElementById('saveNote');
 const boardPanel = document.getElementById('leaderboard');
 const boardList = document.getElementById('boardList');
 const showBoardButton = document.getElementById('showBoard');
+const refreshBoardButton = document.getElementById('refreshBoard');
 const resultBox = document.getElementById('result');
 const resultFloor = document.getElementById('resultFloor');
 const resultBest = document.getElementById('resultBest');
@@ -49,6 +50,8 @@ let fetchingTicket = false;
 let ticks = 0;
 let taps = [];
 let boardData = null;
+let toSave = null; // the finished run the Save button saves: {ticket, seed, taps, floor} (kept on the phone until saved)
+let retryTimer = null; // (saving again by itself while the server is unreachable)
 let boardTab = 'week';
 
 function readBest() {
@@ -169,6 +172,7 @@ function startRun() {
   taps = [];
   saveForm.hidden = true;
   boardPanel.hidden = true;
+  stopRetrying();
   showNote('');
   refillTicket();
 }
@@ -180,6 +184,8 @@ function refillTicket() {
     nextTicket = t;
   }).finally(() => {
     fetchingTicket = false;
+    // (couldn't reach the server: keep trying quietly, so the next run can still be saved)
+    if (!nextTicket) setTimeout(refillTicket, 8000);
   });
 }
 
@@ -193,44 +199,100 @@ function offerSave() {
   boardPanel.hidden = true;
   if (!lb.available()) return;
   showBoardButton.hidden = false;
-  if (run.floor <= 0) {
+  const waiting = lb.pending(); // (a score from earlier that couldn't be saved yet)
+  if (run.floor <= 0 || !currentTicket) {
     saveForm.hidden = true;
-    return;
+    if (waiting) {
+      toSave = waiting;
+      openSave(`You still have an unsaved score: Floor ${waiting.floor}. Save it now?`);
+      return;
+    }
   }
+  if (run.floor <= 0) return;
   if (!currentTicket) {
     saveForm.hidden = true;
     showNote("This run started while the leaderboard was offline, so it can't be saved.", true);
     return;
   }
-  saveForm.hidden = false;
-  saveButton.disabled = false;
-  if (!nameInput.value) nameInput.value = lb.savedName();
+  // this run, kept on the phone until it's saved (so a moment offline never loses it)
+  const thisRun = { ticket: currentTicket.ticket, seed: currentTicket.seed >>> 0, taps: [...taps], floor: run.floor };
+  currentTicket = null;
+  lb.keepPending(thisRun);
+  // (an earlier unsaved score that's better than this run: save that one)
+  toSave = waiting && waiting.floor > thisRun.floor ? waiting : thisRun;
+  openSave(toSave === waiting ? `Your unsaved Floor ${waiting.floor} from earlier is better: save that one?` : '');
 }
 
-saveForm.addEventListener('submit', async event => {
-  event.preventDefault();
+function openSave(note = '') {
+  saveForm.hidden = false;
+  saveButton.disabled = false;
+  saveButton.textContent = 'Save';
+  if (!nameInput.value) nameInput.value = lb.savedName();
+  if (note) showNote(note);
+}
+
+function stopRetrying() {
+  clearTimeout(retryTimer);
+  retryTimer = null;
+}
+
+async function saveNow(byItself = false) {
   const name = nameInput.value.trim();
+  if (!toSave) return;
   if (name.length < 2) {
-    showNote('Type a name (2 to 16 letters or numbers).', true);
-    nameInput.focus();
+    if (!byItself) {
+      showNote('Type a name (2 to 16 letters or numbers).', true);
+      nameInput.focus();
+    }
     return;
   }
-  if (!currentTicket || run.phase !== 'lost') return;
+  stopRetrying();
+  lb.rememberName(name); // (remembered now, so a retry later, even after reopening the game, has it)
   saveButton.disabled = true;
-  showNote('Saving…');
+  showNote(byItself ? 'Trying again…' : 'Saving…');
+  const run = toSave;
   try {
-    const board = await lb.save({ ticket: currentTicket.ticket, seed: currentTicket.seed, taps, floor: run.floor, name });
+    let board;
+    try {
+      board = await lb.save({ ...run, name });
+    } catch (error) {
+      // (it was saved, but the answer got lost on the way back: show the board)
+      if (!/already saved/i.test(error.message)) throw error;
+      board = { ...(await lb.top(name)), name };
+    }
     lb.rememberName(board.name ?? name);
     nameInput.value = board.name ?? name;
-    currentTicket = null; // (saved once)
+    if (toSave === run) toSave = null;
+    lb.clearPending();
     saveForm.hidden = true;
     const mine = (board.week ?? []).find(x => x.you);
     showNote(mine ? `Saved! You're #${mine.place} this week.` : 'Saved! Keep climbing to reach the top 10.');
     showBoard(board, 'week');
   } catch (error) {
     saveButton.disabled = false;
-    showNote(error.message, true);
+    if (error.offline) {
+      // not lost: kept on this phone; try again (and keep trying by itself while the card is open)
+      saveButton.textContent = 'Try again';
+      showNote("Can't reach the leaderboard right now. Your score is kept on this phone: tap Try again, or it will " +
+        'try by itself.', true);
+      retryTimer = setTimeout(() => {
+        if (!saveForm.hidden && overlay.dataset.show === 'true') saveNow(true);
+      }, 20000);
+    } else {
+      // the server said no for good (too old, didn't check out, already saved elsewhere): nothing to keep
+      if (!/name/i.test(error.message)) {
+        lb.clearPending();
+        if (toSave === run) toSave = null;
+        saveForm.hidden = true;
+      }
+      showNote(error.message, true);
+    }
   }
+}
+
+saveForm.addEventListener('submit', event => {
+  event.preventDefault();
+  saveNow();
 });
 
 function showBoard(board, tab = boardTab) {
@@ -264,20 +326,31 @@ for (const b of boardPanel.querySelectorAll('[data-tab]')) {
   b.addEventListener('click', () => boardData && showBoard(boardData, b.dataset.tab));
 }
 
-showBoardButton.addEventListener('click', async () => {
-  showBoardButton.disabled = true;
+async function loadBoard(button) {
+  button.disabled = true;
   try {
     showBoard(await lb.top(lb.savedName()));
   } catch (error) {
-    showNote(error.message, true);
+    showNote(error.offline ? "Can't reach the leaderboard right now. Tap 🔄 Refresh to try again." : error.message, true);
+    boardPanel.hidden = false; // (so the Refresh button is there)
   } finally {
-    showBoardButton.disabled = false;
+    button.disabled = false;
   }
-});
+}
+
+showBoardButton.addEventListener('click', () => loadBoard(showBoardButton));
+refreshBoardButton.addEventListener('click', () => loadBoard(refreshBoardButton));
 
 lb.connect().then(ok => {
   showBoardButton.hidden = !ok;
-  if (ok) refillTicket();
+  if (!ok) return;
+  refillTicket();
+  // a score from earlier that couldn't be saved (the server was unreachable): offer it again
+  const waiting = lb.pending();
+  if (waiting && run.phase === 'ready') {
+    toSave = waiting;
+    openSave(`You have an unsaved score from earlier: Floor ${waiting.floor}. Save it now?`);
+  }
 });
 
 // tap anywhere: the game, the start card, the button
