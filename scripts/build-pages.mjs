@@ -18,6 +18,7 @@ const versioned = new Map([
   ['rulereaper', { modules: 'src', meta: 'rulereaper-build' }],
   ['snap-ruler', { modules: '', meta: 'snap-ruler-build' }],
   ['ceiling-punch', { modules: '', meta: 'ceiling-punch-build' }], // (each release gets new file addresses: phones never keep an old copy)
+  ['kopi-sort', { modules: '', meta: 'kopi-sort-build' }],
 ]);
 
 async function hasFile(path) {
