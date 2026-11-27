@@ -1,0 +1,202 @@
+// The chase music: an original piece made live with Web Audio (no files), in D minor, that reacts to the flood.
+// `danger` goes from 0 (the water is far below) to 1 (it's at your feet):
+//   0    a low pulsing bassline (D, B♭, C, A: the minor chords that never quite settle) and a slow heartbeat
+//   0.3+ faster, brighter, grittier bass; a clock-like hi-hat ticking in
+//   0.6+ the heartbeat doubles; a rising string drone swells
+//   0.8+ a high two-note alarm pulse
+// A gold double smash (the water falls back) lets it calm down again. It speeds up a little as you climb, too.
+
+const ROOTS = [38, 34, 36, 33]; // MIDI: D2, B♭1, C2, A1 (one bar each)
+const THIRDS = [65, 62, 64, 61]; // the drone's notes over each bar (F4, D4, E4, C#4: tension over A)
+const STEPS = 8; // eighth notes in a bar
+
+const hz = midi => 440 * 2 ** ((midi - 69) / 12);
+
+let state = null; // { audio, out, bus, nextTime, step, danger, floor, timer }
+
+/** Danger from how far the water is below the robot (in floors; 0 = at your feet), smoothed by the caller. */
+export function dangerFrom(gap, gapMax = 2.4) {
+  return Math.min(1, Math.max(0, 1 - gap / gapMax));
+}
+
+export function tempo(danger, floor) {
+  return 100 + 52 * danger + Math.min(18, floor * .4); // beats per minute
+}
+
+let noise = null;
+function noiseBuffer(audio) {
+  if (!noise || noise.sampleRate !== audio.sampleRate) {
+    noise = audio.createBuffer(1, audio.sampleRate / 2, audio.sampleRate);
+    const d = noise.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return noise;
+}
+
+function envelope(audio, t, peak, attack, release) {
+  const g = audio.createGain();
+  g.gain.setValueAtTime(.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + attack);
+  g.gain.exponentialRampToValueAtTime(.0001, t + attack + release);
+  return g;
+}
+
+/** One eighth note of music at audio time t (also used to render it offline, for the checks). */
+export function scheduleStep(audio, out, t, step, danger, floor = 0) {
+  const bar = Math.floor(step / STEPS) % ROOTS.length;
+  const s = step % STEPS;
+  const beat = 60 / tempo(danger, floor);
+  const eighth = beat / 2;
+
+  // bass: a driving eighth-note ostinato, the octave on the off-beats; brighter and grittier with danger
+  const root = ROOTS[bar] + (s === 3 || s === 7 ? 12 : 0);
+  const bass = audio.createOscillator();
+  bass.type = 'sawtooth';
+  bass.frequency.setValueAtTime(hz(root), t);
+  const lp = audio.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(260 + 1400 * danger ** 1.3, t);
+  lp.Q.value = 4 + 6 * danger;
+  const bassGain = envelope(audio, t, .16 + .06 * danger, .008, eighth * .85);
+  bass.connect(lp).connect(bassGain).connect(out);
+  bass.start(t);
+  bass.stop(t + eighth + .05);
+
+  // heartbeat: "lub-dub" on beats 1 and 3; doubled when the water is close
+  const beats = danger > .6 ? [0, 2, 4, 6] : [0, 4];
+  if (beats.includes(s)) {
+    for (const [offset, peak] of [[0, .55], [.13, .32]]) {
+      const k = audio.createOscillator();
+      k.type = 'sine';
+      k.frequency.setValueAtTime(95, t + offset);
+      k.frequency.exponentialRampToValueAtTime(38, t + offset + .14);
+      const g = envelope(audio, t + offset, peak * (.7 + .5 * danger), .004, .16);
+      k.connect(g).connect(out);
+      k.start(t + offset);
+      k.stop(t + offset + .2);
+    }
+  }
+
+  // ticking: sixteenth-note hi-hats, coming in as the water rises (a clock running out)
+  if (danger > .3) {
+    const level = (danger - .3) / .7;
+    for (const half of [0, 1]) {
+      const at = t + half * eighth / 2;
+      const src = audio.createBufferSource();
+      src.buffer = noiseBuffer(audio);
+      const hp = audio.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 7000;
+      const g = envelope(audio, at, (half ? .03 : .055) * level, .002, .04);
+      src.connect(hp).connect(g).connect(out);
+      src.start(at, Math.random() * .3);
+      src.stop(at + .06);
+    }
+  }
+
+  // the drone: two detuned strings at the start of each bar, swelling and rising when the water is close
+  if (s === 0 && danger > .55) {
+    const level = (danger - .55) / .45;
+    for (const detune of [-9, 9]) {
+      const o = audio.createOscillator();
+      o.type = 'sawtooth';
+      o.detune.value = detune;
+      const len = eighth * STEPS;
+      o.frequency.setValueAtTime(hz(THIRDS[bar]), t);
+      o.frequency.linearRampToValueAtTime(hz(THIRDS[bar]) * (1 + .03 * level), t + len); // creeping up
+      const f = audio.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 900 + 2200 * level;
+      const g = audio.createGain();
+      g.gain.setValueAtTime(.0001, t);
+      g.gain.linearRampToValueAtTime(.05 * level, t + len * .6);
+      g.gain.linearRampToValueAtTime(.0001, t + len);
+      o.connect(f).connect(g).connect(out);
+      o.start(t);
+      o.stop(t + len + .02);
+    }
+  }
+
+  // the alarm: a high minor second (A5, B♭5) on the last beat of each bar, at the very edge
+  if (danger > .8 && (s === 6 || s === 7)) {
+    const a = audio.createOscillator();
+    a.type = 'square';
+    a.frequency.setValueAtTime(hz(s === 6 ? 81 : 82), t);
+    const f = audio.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 3000;
+    const g = envelope(audio, t, .035 * (danger - .8) / .2 + .01, .005, eighth * .7);
+    a.connect(f).connect(g).connect(out);
+    a.start(t);
+    a.stop(t + eighth);
+  }
+  return eighth;
+}
+
+/** Start the music (after a tap: sound must be unlocked). `output` is feel.output(). */
+export function start(output) {
+  if (!output) return;
+  stop(true);
+  const { audio, out } = output;
+  const bus = audio.createGain();
+  bus.gain.setValueAtTime(.0001, audio.currentTime);
+  bus.gain.exponentialRampToValueAtTime(.55, audio.currentTime + .6); // (a quick fade in)
+  bus.connect(out);
+  state = { audio, out, bus, nextTime: audio.currentTime + .08, step: 0, danger: 0, floor: 0 };
+  state.timer = setInterval(pump, 25);
+  pump();
+}
+
+/** Keep about 0.15 s of music scheduled ahead (steady timing even if a frame is slow). */
+function pump() {
+  if (!state) return;
+  const { audio } = state;
+  if (document.hidden) {
+    state.nextTime = audio.currentTime + .1;
+    return;
+  }
+  if (state.nextTime < audio.currentTime) state.nextTime = audio.currentTime + .02; // (fell behind: catch up)
+  while (state.nextTime < audio.currentTime + .15) {
+    state.nextTime += scheduleStep(audio, state.bus, state.nextTime, state.step++, state.danger, state.floor);
+  }
+}
+
+/** How close the water is now (0..1) and the floor; the music follows on its next notes. */
+export function update(danger, floor) {
+  if (!state) return;
+  state.danger = danger;
+  state.floor = floor;
+}
+
+/** Stop: a quick fade, or (caught by the water) a falling whoosh. */
+export function stop(quick = false, caught = false) {
+  if (!state) return;
+  const { audio, out, bus, timer } = state;
+  state = null;
+  clearInterval(timer);
+  const t = audio.currentTime;
+  bus.gain.cancelScheduledValues(t);
+  bus.gain.setValueAtTime(Math.max(.0001, bus.gain.value), t);
+  bus.gain.exponentialRampToValueAtTime(.0001, t + (quick ? .08 : .9));
+  setTimeout(() => bus.disconnect(), 1200);
+  if (!caught || quick) return;
+  // the music sinks under the water (straight to the main output, not the fading music)
+  const o = audio.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(hz(62), t);
+  o.frequency.exponentialRampToValueAtTime(hz(26), t + 1.1);
+  const f = audio.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(1800, t);
+  f.frequency.exponentialRampToValueAtTime(120, t + 1.1);
+  const g = audio.createGain();
+  g.gain.setValueAtTime(.12, t);
+  g.gain.exponentialRampToValueAtTime(.0001, t + 1.2);
+  o.connect(f).connect(g).connect(out);
+  o.start(t);
+  o.stop(t + 1.25);
+}
+
+export function playing() {
+  return state !== null;
+}
