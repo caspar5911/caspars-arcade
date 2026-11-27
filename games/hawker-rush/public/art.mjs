@@ -80,9 +80,43 @@ export function bowl(has = []) {
 }
 
 /** A dish (on a counter, or in an order bubble) from its base and contents. */
-export function dish(base, has, { face = false } = {}) {
-  const art = base === 'cup' ? cup(has) : base === 'bowl' ? bowl(has) : plate(has);
-  return face ? art.replace('</svg>', FACE[base] + '</svg>') : art;
+export function dish(base, has, { face = false, cooked = false } = {}) {
+  const art = base === 'cup' ? cup(has) : base === 'bowl' ? bowl(has) : base === 'pastry' ? pastry(has, cooked)
+    : base === 'dough' ? dough(has, cooked) : plate(has);
+  return face ? art.replace('</svg>', (FACE[base] ?? FACE.plate) + '</svg>') : art;
+}
+
+const PLATE = '<ellipse cx="30" cy="42" rx="27" ry="12" fill="#f7f4ec" stroke="#d6cfbd" stroke-width="2"/>';
+
+/** A curry puff: a pastry sheet with its filling, or (cooked) a golden crimped half-moon on a plate. */
+export function pastry(has = [], cooked = false, colour = null) {
+  if (cooked || colour) {
+    const c = colour ?? '#e2a04a';
+    return svg(60, 60, (colour ? '' : PLATE) +
+      `<path d="M8 40 Q30 6 52 40 Z" fill="${c}" stroke="#9a5a1c" stroke-width="2" stroke-linejoin="round"/>` +
+      Array.from({ length: 7 }, (_, i) => `<path d="M${12 + i * 6} ${40 - Math.sin((i + .5) / 7 * Math.PI) * 4} q3 -4 6 0" fill="none" stroke="#9a5a1c" stroke-width="1.6"/>`).join('') +
+      '<path d="M18 30 q6 -10 14 -12" stroke="#fff3c0" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".7"/>', 'food');
+  }
+  let fill = '';
+  if (has.includes('curry')) fill += '<ellipse cx="30" cy="34" rx="13" ry="7" fill="#e8a11c"/>';
+  if (has.includes('potato')) fill += '<rect x="21" y="29" width="7" height="7" rx="2" fill="#f2d27a" stroke="#c9a23a"/><rect x="31" y="31" width="7" height="7" rx="2" fill="#f2d27a" stroke="#c9a23a"/>';
+  return svg(60, 60, '<ellipse cx="30" cy="35" rx="25" ry="15" fill="#f6e6c0" stroke="#d6b77a" stroke-width="2"/>' +
+    '<g fill="#fffaf0" opacity=".8"><circle cx="14" cy="32" r="1.2"/><circle cx="46" cy="38" r="1.2"/><circle cx="40" cy="27" r="1"/></g>' + fill, 'food');
+}
+
+/** Roti prata (with an egg: roti telur): raw dough, or (cooked) golden and flaky on a plate. */
+export function dough(has = [], cooked = false, colour = null) {
+  const egg = has.includes('egg');
+  if (cooked || colour) {
+    const c = colour ?? '#e9b45e';
+    return svg(60, 60, (colour ? '' : PLATE) +
+      (egg ? `<rect x="12" y="22" width="36" height="22" rx="5" fill="${c}" stroke="#a8682a" stroke-width="2"/><path d="M14 33 h32" stroke="#f6c84a" stroke-width="3"/>`
+        : `<ellipse cx="30" cy="35" rx="22" ry="10" fill="${c}" stroke="#a8682a" stroke-width="2"/><path d="M14 33 q16 -8 32 0 M18 38 q12 -5 24 0" fill="none" stroke="#a8682a" stroke-width="1.4" opacity=".7"/>`) +
+      '<g fill="#a8682a" opacity=".55"><circle cx="22" cy="32" r="1.6"/><circle cx="35" cy="36" r="1.8"/><circle cx="41" cy="31" r="1.3"/></g>', 'food');
+  }
+  return svg(60, 60, '<ellipse cx="30" cy="38" rx="20" ry="11" fill="#fbf2dc" stroke="#d9c39a" stroke-width="2"/>' +
+    '<ellipse cx="24" cy="34" rx="6" ry="3" fill="#ffffff" opacity=".7"/>' +
+    (egg ? '<ellipse cx="32" cy="38" rx="9" ry="5" fill="#fff" stroke="#eee"/><circle cx="32" cy="38" r="3.6" fill="#f6b21b"/>' : ''), 'food');
 }
 
 // a finished dish smiles (so you can see at a glance it's done)
@@ -108,6 +142,11 @@ const ICONS = {
   chicken: () => svg(60, 60, '<ellipse cx="30" cy="36" rx="20" ry="13" fill="#f2d3a5" stroke="#b97c3f" stroke-width="2"/><path d="M14 34 q16 -6 32 0" fill="none" stroke="#e0b47a" stroke-width="2"/><path d="M46 28 l7 -6 l3 4 l-6 6" fill="#f2d3a5" stroke="#b97c3f" stroke-width="2"/>'),
   cucumber: () => svg(60, 60, '<rect x="8" y="22" width="44" height="16" rx="8" fill="#3d8b3d" stroke="#2a632a" stroke-width="2" transform="rotate(-12 30 30)"/><circle cx="40" cy="44" r="8" fill="#cde9a8" stroke="#3d8b3d" stroke-width="2.5"/>'),
   chilli: () => svg(60, 60, '<path d="M14 22 Q34 18 46 34 Q50 44 42 46 Q38 34 16 30 Z" fill="#e0321f" stroke="#9a1d10" stroke-width="2"/><path d="M14 22 l-4 -6" stroke="#3d8b3d" stroke-width="3" stroke-linecap="round"/>'),
+  pastry: () => svg(60, 60, '<ellipse cx="30" cy="36" rx="24" ry="14" fill="#f6e6c0" stroke="#d6b77a" stroke-width="2"/><ellipse cx="30" cy="31" rx="24" ry="14" fill="#f9ecd0" stroke="#d6b77a" stroke-width="2"/><g fill="#fffaf0"><circle cx="20" cy="28" r="1.4"/><circle cx="38" cy="33" r="1.4"/></g>'),
+  dough: () => svg(60, 60, '<ellipse cx="30" cy="38" rx="20" ry="15" fill="#fbf2dc" stroke="#d9c39a" stroke-width="2"/><ellipse cx="23" cy="32" rx="6" ry="4" fill="#fff" opacity=".8"/>'),
+  potato: () => svg(60, 60, '<ellipse cx="30" cy="34" rx="20" ry="14" fill="#c89a5a" stroke="#8a6330" stroke-width="2" transform="rotate(-12 30 34)"/><g fill="#8a6330"><circle cx="22" cy="30" r="1.6"/><circle cx="34" cy="38" r="1.6"/><circle cx="38" cy="28" r="1.4"/></g>'),
+  curry: () => svg(60, 60, '<path d="M8 30 Q30 30 52 30 Q50 48 30 50 Q10 48 8 30 Z" fill="#f7f4ec" stroke="#d6cfbd" stroke-width="2"/><ellipse cx="30" cy="31" rx="20" ry="5" fill="#e8a11c"/><circle cx="24" cy="30" r="2" fill="#c0392b" opacity=".6"/>'),
+  egg: () => svg(60, 60, '<ellipse cx="30" cy="34" rx="14" ry="18" fill="#fffaf0" stroke="#d9cfb8" stroke-width="2"/><ellipse cx="25" cy="27" rx="4" ry="6" fill="#fff" opacity=".9"/>'),
   peanut: () => svg(60, 60, '<path d="M8 30 Q30 30 52 30 Q50 48 30 50 Q10 48 8 30 Z" fill="#f7f4ec" stroke="#d6cfbd" stroke-width="2"/><ellipse cx="30" cy="31" rx="20" ry="5" fill="#b5772e"/>'),
 };
 function pot(color, letter) {
@@ -170,57 +209,90 @@ function mix(a, b, t) {
   return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * Math.max(0, Math.min(1, t))).toString(16).padStart(2, '0')).join('');
 }
 
-/** A cooking station with its slots: null | {state: 'cooking'|'ready'|'burnt', p}. */
+// fire under the stove line: glowing coals and flickering flames
+function flames(x0, x1, y, lit = true, n = 5) {
+  if (!lit) return `<rect x="${x0}" y="${y - 3}" width="${x1 - x0}" height="6" rx="3" fill="#5a3a2a"/>`;
+  const w = (x1 - x0) / n;
+  return `<rect x="${x0}" y="${y - 2}" width="${x1 - x0}" height="7" rx="3.5" fill="#ff6a2a" opacity=".85"/>` +
+    `<g class="flicker">${Array.from({ length: n }, (_, k) => `<path d="M${x0 + k * w + w * .15} ${y} q${w * .35} -${12 + (k % 2) * 5} ${w * .7} 0 Z" fill="#ff8a2a"/><path d="M${x0 + k * w + w * .3} ${y} q${w * .2} -${7 + (k % 2) * 3} ${w * .4} 0 Z" fill="#ffd23f"/>`).join('')}</g>`;
+}
+function coals(x0, x1, y) {
+  return `<g>${Array.from({ length: Math.floor((x1 - x0) / 9) }, (_, k) => `<circle cx="${x0 + 5 + k * 9}" cy="${y + (k % 2) * 2}" r="4.2" fill="${k % 3 ? '#e2401c' : '#ff8a2a'}" class="${k % 3 ? '' : 'glow'}"/>`).join('')}</g>`;
+}
+
+/** A cooking station with its slots: null | {state: 'cooking'|'flip'|'ready'|'burnt', p, has}. Drawn big and lively. */
 export function station(id, slots) {
-  const n = slots.length;
-  if (id === 'toaster') {
-    const w = 24 + n * 24;
-    const bread = slots.map((s, k) => {
-      const x = 14 + k * 24;
-      if (!s) return `<rect x="${x}" y="24" width="18" height="4" rx="2" fill="#5a4a40"/>`;
-      const c = s.state === 'burnt' ? '#2a1c14' : s.state === 'ready' ? '#d88f35' : mix('#f6e3b8', '#d99a45', s.p);
-      const pop = s.state === 'cooking' ? 6 : -6;
-      return `<g class="${s.state === 'ready' ? 'pop-up' : ''}"><rect x="${x + 1}" y="${12 + pop}" width="16" height="18" rx="6" fill="${c}" stroke="#8a5a26" stroke-width="1.5"/>` +
-        (s.state !== 'burnt' ? `<rect x="${x + 4}" y="${15 + pop}" width="10" height="9" rx="3" fill="#fff4d6" opacity=".55"/>` : '') +
-        `</g><rect x="${x}" y="24" width="18" height="4" rx="2" fill="#5a4a40"/>`;
+  const busy = slots.some(Boolean);
+  const W = 110;
+  if (id === 'toaster' || id === 'grill') {
+    // a charcoal brazier: food on the grate, coals and flames below
+    const food = slots.map((s, k) => {
+      if (!s) return '';
+      const x = 14 + k * (82 / slots.length);
+      if (id === 'toaster') {
+        const c = s.state === 'burnt' ? '#2a1c14' : s.state === 'ready' ? '#d88f35' : mix('#f6e3b8', '#d99a45', s.p);
+        return `<g class="${s.state === 'ready' ? 'pop-up' : ''}"><rect x="${x}" y="12" width="${82 / slots.length - 8}" height="24" rx="7" fill="${c}" stroke="#8a5a26" stroke-width="1.6"/>` +
+          (s.p > .4 || s.state !== 'cooking' ? `<path d="M${x + 4} 20 h${82 / slots.length - 16} M${x + 4} 27 h${82 / slots.length - 16}" stroke="#7a4a1a" stroke-width="2" opacity=".6"/>` : '') + '</g>';
+      }
+      const meat = s.state === 'burnt' ? '#1d120b' : s.state === 'ready' ? '#9a5222' : mix('#f0a090', '#9a5222', s.p);
+      const y = 15 + k * 12;
+      return `<line x1="6" y1="${y}" x2="${W - 6}" y2="${y}" stroke="#e0c08a" stroke-width="2.4" stroke-linecap="round"/>` +
+        [0, 1, 2, 3, 4].map(j => `<rect x="${18 + j * 15}" y="${y - 6}" width="12" height="12" rx="5" fill="${meat}" stroke="#5a2c0e" stroke-width="1"/>`).join('');
     }).join('');
-    return svg(w, 70, bread +
-      `<rect x="6" y="26" width="${w - 12}" height="38" rx="14" fill="#ffd1dc" stroke="#d98aa0" stroke-width="2.5"/>` +
-      `<rect x="10" y="30" width="${w - 20}" height="6" rx="3" fill="#ffffff88"/>` +
-      `<rect x="${w - 10}" y="40" width="6" height="12" rx="3" fill="#d98aa0"/>` +
-      machineFace(slots, w / 2, 48) + smoke(slots, w), 'station-art');
+    return svg(W, 80, food +
+      '<path d="M6 36 h98" stroke="#555" stroke-width="2.4"/>' +
+      Array.from({ length: 9 }, (_, k) => `<path d="M${12 + k * 11} 34 v6" stroke="#555" stroke-width="2"/>`).join('') +
+      `<path d="M4 40 L106 40 L98 74 Q55 80 12 74 Z" fill="#3c3c44" stroke="#22222a" stroke-width="2.4"/>` +
+      coals(14, 96, 46) + flames(12, 98, 46, busy, 7) +
+      machineFace(slots, 55, 62) + smoke(slots, W), 'station-art');
   }
   if (id === 'pot') {
-    const w = 30 + n * 18;
     const eggs = slots.map((s, k) => {
       if (!s) return '';
-      const x = 22 + k * 18;
+      const x = 40 + k * 20;
       const c = s.state === 'burnt' ? '#8a7f70' : s.state === 'ready' ? '#fffdf4' : '#f6eedb';
-      return `<ellipse cx="${x}" cy="27" rx="7" ry="8.5" fill="${c}" stroke="#c9b88f" stroke-width="1.5" class="${s.state === 'cooking' ? 'bob' : ''}"/>`;
+      return `<ellipse cx="${x}" cy="26" rx="8" ry="10" fill="${c}" stroke="#c9b88f" stroke-width="1.5" class="${s.state === 'cooking' ? 'bob' : ''}"/>`;
     }).join('');
     const boiling = slots.some(s => s && s.state === 'cooking');
-    return svg(w, 70, eggs +
-      `<path d="M6 30 L${w - 6} 30 L${w - 10} 60 Q${w / 2} 67 10 60 Z" fill="#9fd8e8" stroke="#4f97ad" stroke-width="2.5"/>` +
-      `<rect x="3" y="27" width="${w - 6}" height="7" rx="3.5" fill="#bfe6f1" stroke="#4f97ad" stroke-width="2"/>` +
-      `<path d="M0 36 h6 M${w - 6} 36 h6" stroke="#4f97ad" stroke-width="5" stroke-linecap="round"/>` +
-      (boiling ? `<g class="steam" stroke="#ffffffcc" stroke-width="2.2" fill="none" stroke-linecap="round"><path d="M${w * .35} 20 q-3 -5 0 -10"/><path d="M${w * .65} 20 q-3 -5 0 -10"/></g>` : '') +
-      machineFace(slots, w / 2, 46) + smoke(slots, w), 'station-art');
+    return svg(W, 80, eggs +
+      '<path d="M20 30 L90 30 L86 62 Q55 70 24 62 Z" fill="#9fd8e8" stroke="#4f97ad" stroke-width="2.5"/>' +
+      '<rect x="16" y="26" width="78" height="8" rx="4" fill="#bfe6f1" stroke="#4f97ad" stroke-width="2"/>' +
+      '<path d="M8 34 h10 M92 34 h10" stroke="#4f97ad" stroke-width="5" stroke-linecap="round"/>' +
+      (boiling ? '<g class="steam" stroke="#ffffffcc" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M38 18 q-4 -6 0 -12"/><path d="M70 18 q-4 -6 0 -12"/></g>' : '') +
+      '<rect x="22" y="70" width="66" height="6" rx="3" fill="#555"/>' + flames(26, 84, 70, busy, 6) +
+      machineFace(slots, 55, 48) + smoke(slots, W), 'station-art');
   }
-  // the satay grill
-  const w = 76;
-  const sticks = slots.map((s, k) => {
+  if (id === 'wok') {
+    // a big wok of hot oil: curry puffs go in pale and come out golden
+    const puffs = slots.map((s, k) => {
+      if (!s) return '';
+      const c = s.state === 'burnt' ? '#2a1a10' : s.state === 'ready' ? '#d98a2a' : mix('#f6e6c0', '#d98a2a', s.p);
+      const x = 22 + k * (66 / slots.length);
+      return `<g transform="translate(${x} 14) scale(.62)" class="${s.state === 'cooking' ? 'bob' : ''}">${pastry([], false, c).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g>`;
+    }).join('');
+    const frying = slots.some(s => s && s.state === 'cooking');
+    return svg(W, 80,
+      '<path d="M6 30 Q55 76 104 30 Z" fill="#2c2c30" stroke="#151518" stroke-width="2.4"/>' +
+      '<path d="M12 32 Q55 66 98 32 Z" fill="#e8a34a" opacity=".85"/>' +
+      (frying ? '<g class="sizzle" fill="#fff3c0">' + [24, 40, 56, 72, 86].map((x, k) => `<circle cx="${x}" cy="${38 + (k % 2) * 4}" r="${1.6 + (k % 3) * .6}"/>`).join('') + '</g>' : '') +
+      puffs +
+      '<path d="M104 30 q6 -2 6 -8" stroke="#151518" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+      flames(24, 86, 74, busy, 6) +
+      machineFace(slots, 55, 56) + smoke(slots, W), 'station-art');
+  }
+  // the prata griddle: a flat iron plate over the fire; pratas flip halfway
+  const pratas = slots.map((s, k) => {
     if (!s) return '';
-    const y = 16 + k * (24 / Math.max(1, n));
-    const meat = s.state === 'burnt' ? '#1d120b' : s.state === 'ready' ? '#9a5222' : mix('#f0a090', '#9a5222', s.p);
-    return `<line x1="6" y1="${y}" x2="${w - 6}" y2="${y}" stroke="#e0c08a" stroke-width="2.2" stroke-linecap="round"/>` +
-      [0, 1, 2, 3].map(j => `<rect x="${16 + j * 12}" y="${y - 5}" width="10" height="10" rx="4" fill="${meat}" stroke="#5a2c0e" stroke-width="1"/>`).join('');
+    const x = 8 + k * (94 / slots.length);
+    const c = s.state === 'burnt' ? '#2a1a10' : s.state === 'flip' ? '#f3d9a0' : s.state === 'ready' ? '#e9b45e' : mix('#fbf2dc', '#e9b45e', s.p);
+    const flipMe = s.state === 'flip' ? `<g class="flip-me"><circle cx="${x + 22}" cy="10" r="9" fill="#ffd23f" stroke="#c99400"/><path d="M${x + 17} 12 q5 -8 10 0 l-3 -1 M${x + 27} 12 l1 -3" stroke="#6a4200" stroke-width="2" fill="none" stroke-linecap="round"/></g>` : '';
+    return `<g transform="translate(${x} 10) scale(.75)">${dough(s.has ?? [], false, c).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g>` + flipMe;
   }).join('');
-  const hot = slots.some(s => s && s.state !== 'burnt');
-  return svg(w, 70, sticks +
-    `<rect x="4" y="38" width="${w - 8}" height="26" rx="10" fill="#ffb36b" stroke="#c96f2a" stroke-width="2.5"/>` +
-    `<path d="M10 40 h${w - 20}" stroke="#7a4a2a" stroke-width="3" stroke-linecap="round"/>` +
-    (hot ? `<g class="flicker"><path d="M14 40 q3 -8 6 0 M30 40 q3 -9 6 0 M46 40 q3 -8 6 0 M58 40 q3 -7 6 0" fill="#ff6a2a" stroke="#ffd23f" stroke-width="1"/></g>` : '') +
-    machineFace(slots, w / 2, 52) + smoke(slots, w), 'station-art');
+  return svg(W, 80, pratas +
+    '<rect x="4" y="44" width="102" height="9" rx="3" fill="#3a3a40" stroke="#1e1e22" stroke-width="2"/>' +
+    '<path d="M10 53 L14 74 M100 53 L96 74" stroke="#3a3a40" stroke-width="4"/>' +
+    flames(18, 92, 68, busy, 6) +
+    machineFace(slots, 55, 64).replace('class="machine-face"', 'class="machine-face" transform="translate(0 -6) scale(1)"') + smoke(slots, W), 'station-art');
 }
 
 // ---------------------------------------------------------------------------------------------------- customers

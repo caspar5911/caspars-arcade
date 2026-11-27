@@ -1,6 +1,8 @@
-// Hawker Rush (v3): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
+// Hawker Rush (v4): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
 // step: a cup, then kopi, then condensed milk; a plate, then toast from the toaster (it burns!), kaya and butter...
-// then serve it to the customer. Quick service earns tips; serving in a row builds a combo.
+// then serve it to the customer. Some dishes are built first and then cooked whole: a curry puff (pastry, potato,
+// curry) goes into the wok to fry; roti prata goes on the griddle, and must be flipped halfway.
+// Quick service earns tips; serving in a row builds a combo.
 // A shift comes in waves (a quiet open, the lunch rush, a breather, the dinner rush). A free seat never sits empty for
 // long: the next customer due soon walks straight in, so quick players get busier, and can close early for a bonus.
 // Deterministic: a seed and the list of actions replay exactly (for checked leaderboards).
@@ -19,7 +21,7 @@ export const EARLY_BONUS = .15; // closing early: up to this much per second lef
 
 // ---------------------------------------------------------------------------------------------------- the kitchen
 // bases: what a dish is built in
-export const BASES = { cup: { name: 'Cup' }, plate: { name: 'Plate' }, bowl: { name: 'Bowl' } };
+export const BASES = { cup: { name: 'Cup' }, plate: { name: 'Plate' }, bowl: { name: 'Bowl' }, pastry: { name: 'Pastry' }, dough: { name: 'Dough' } };
 
 // ingredients: what goes into which base (cooked ones come from a cooking station)
 export const INGREDIENTS = {
@@ -38,27 +40,37 @@ export const INGREDIENTS = {
   chilli: { name: 'Chilli', base: 'plate' },
   satay: { name: 'Satay', base: 'plate', cooked: 'grill' },
   peanut: { name: 'Peanut sauce', base: 'plate' },
+  potato: { name: 'Potato', base: 'pastry' },
+  curry: { name: 'Curry', base: 'pastry' },
+  egg: { name: 'Egg', base: 'dough' },
 };
 
-// cooking stations: they cook one thing (it burns if left ready too long)
+// cooking stations (it all burns if left ready too long). Most cook one ingredient (bread on the charcoal grill...);
+// the wok and the griddle cook a whole dish you built first. The griddle's prata must be flipped halfway.
 export const STATIONS = {
-  toaster: { name: 'Toaster', makes: 'toast', cook: 3.2, burn: 5, slots: 2 },
+  toaster: { name: 'Toast grill', makes: 'toast', cook: 3.2, burn: 5, slots: 2 },
   pot: { name: 'Egg pot', makes: 'eggs', cook: 3.6, burn: 6, slots: 2 },
   grill: { name: 'Satay grill', makes: 'satay', cook: 4, burn: 4.5, slots: 2 },
+  wok: { name: 'Wok', dishes: true, cook: 4, burn: 5, slots: 2 },
+  griddle: { name: 'Prata griddle', dishes: true, flip: true, cook: 4, burn: 3.5, slots: 2 },
 };
 
-// dishes: a base and exactly these ingredients (in any order); `day` it joins the menu
+// dishes: a base and exactly these ingredients (in any order); `cook`: then cooked whole at that station;
+// `day` it joins the menu
 export const DISHES = {
   kopi: { name: 'Kopi', base: 'cup', has: ['kopi', 'milk'], price: 2, day: 1 },
   kopiO: { name: 'Kopi-O', base: 'cup', has: ['kopi'], price: 1.5, day: 2 },
   toast: { name: 'Kaya toast', base: 'plate', has: ['toast', 'kaya', 'butter'], price: 3, day: 2 },
-  eggs: { name: 'Soft-boiled eggs', base: 'bowl', has: ['eggs', 'soy'], price: 2, day: 3 },
+  curryPuff: { name: 'Curry puff', base: 'pastry', has: ['potato', 'curry'], cook: 'wok', price: 3.5, day: 3 },
+  eggs: { name: 'Soft-boiled eggs', base: 'bowl', has: ['eggs', 'soy'], price: 2, day: 4 },
   teh: { name: 'Teh', base: 'cup', has: ['teh', 'milk'], price: 2, day: 4 },
   kopiPeng: { name: 'Kopi peng', base: 'cup', has: ['kopi', 'milk', 'ice'], price: 2.5, day: 5 },
-  rice: { name: 'Chicken rice', base: 'plate', has: ['rice', 'chicken', 'cucumber'], price: 5, day: 6 },
-  riceChilli: { name: 'Chicken rice + chilli', base: 'plate', has: ['rice', 'chicken', 'cucumber', 'chilli'], price: 5.5, day: 7 },
+  prata: { name: 'Roti prata', base: 'dough', has: [], cook: 'griddle', price: 2.5, day: 6 },
+  rice: { name: 'Chicken rice', base: 'plate', has: ['rice', 'chicken', 'cucumber'], price: 5, day: 7 },
   satay: { name: 'Satay', base: 'plate', has: ['satay', 'peanut'], price: 5, day: 8 },
-  tehPeng: { name: 'Teh peng', base: 'cup', has: ['teh', 'milk', 'ice'], price: 2.5, day: 9 },
+  riceChilli: { name: 'Chicken rice + chilli', base: 'plate', has: ['rice', 'chicken', 'cucumber', 'chilli'], price: 5.5, day: 9 },
+  tehPeng: { name: 'Teh peng', base: 'cup', has: ['teh', 'milk', 'ice'], price: 2.5, day: 10 },
+  rotiTelur: { name: 'Roti telur', base: 'dough', has: ['egg'], cook: 'griddle', price: 3.5, day: 11 },
 };
 
 // the counter's prep spots (where dishes are built)
@@ -127,6 +139,7 @@ export function kitchenFor(day) {
   const bases = new Set(), ingredients = new Set(), stations = new Set();
   for (const d of menuFor(day)) {
     bases.add(DISHES[d].base);
+    if (DISHES[d].cook) stations.add(DISHES[d].cook);
     for (const i of DISHES[d].has) {
       if (INGREDIENTS[i].cooked) stations.add(INGREDIENTS[i].cooked);
       else ingredients.add(i);
@@ -137,7 +150,8 @@ export function kitchenFor(day) {
 
 /** How many steps a dish takes (a base, each ingredient; cooking counts double): for patience. */
 export function steps(dish) {
-  return 1 + DISHES[dish].has.reduce((n, i) => n + (INGREDIENTS[i].cooked ? 2 : 1), 0);
+  const d = DISHES[dish];
+  return 1 + d.has.reduce((n, i) => n + (INGREDIENTS[i].cooked ? 2 : 1), 0) + (d.cook ? 2 + (STATIONS[d.cook].flip ? 1 : 0) : 0);
 }
 
 /** How many friends share the stall (1 to MAX_PLAYERS). */
@@ -246,17 +260,27 @@ export function createShift(spec = {}) {
 const cookTime = (shift, id) => STATIONS[id].cook * .85 ** (shift.upgrades.fast ?? 0);
 const burnTime = (shift, id) => STATIONS[id].burn + 2 * (shift.upgrades.timer ?? 0);
 
-/** What a dish on the counter is (a dish id when it's exactly a dish, else null). */
+const sameMix = (d, item) => d.base === item.base && d.has.length === item.has.length && d.has.every(i => item.has.includes(i));
+
+/** What a dish on the counter is (a dish id when it's exactly a finished dish, else null). */
 export function dishOf(item) {
   if (!item) return null;
   for (const [id, d] of Object.entries(DISHES)) {
-    if (d.base === item.base && d.has.length === item.has.length && d.has.every(i => item.has.includes(i))) return id;
+    if (sameMix(d, item) && Boolean(d.cook) === Boolean(item.cooked)) return id;
   }
   return null;
 }
 
-/** Which dishes this item could still become (by adding more). */
+/** A built dish waiting to be cooked whole (a curry puff for the wok...): its dish id, else null. */
+export function readyToCook(item) {
+  if (!item || item.cooked) return null;
+  for (const [id, d] of Object.entries(DISHES)) if (d.cook && sameMix(d, item)) return id;
+  return null;
+}
+
+/** Which dishes this item could still become (by adding more, or cooking it). */
 export function couldBe(item) {
+  if (item.cooked) return Object.keys(DISHES).filter(id => DISHES[id].cook && sameMix(DISHES[id], item));
   return Object.keys(DISHES).filter(id => {
     const d = DISHES[id];
     return d.base === item.base && item.has.every(i => d.has.includes(i));
@@ -281,7 +305,7 @@ export function autoSpot(shift, ingredient) {
   const need = wanted(shift).map(w => w.dish);
   let best = -1, bestScore = -1;
   shift.prep.forEach((item, i) => {
-    if (!item || item.base !== base || item.has.includes(ingredient)) return;
+    if (!item || item.cooked || item.base !== base || item.has.includes(ingredient)) return;
     const options = couldBe({ base, has: [...item.has, ingredient] });
     if (!options.length) return;
     // a dish someone is waiting for is best; then any dish it could still become
@@ -323,7 +347,7 @@ export function addIngredient(shift, ingredient, spot = -1) {
   } else if (!shift.kitchen.ingredients.includes(ingredient)) return false;
   const i = spot >= 0 ? spot : autoSpot(shift, ingredient);
   const item = shift.prep[i];
-  if (!item || item.base !== ing.base || item.has.includes(ingredient) ||
+  if (!item || item.cooked || item.base !== ing.base || item.has.includes(ingredient) ||
       !couldBe({ base: item.base, has: [...item.has, ingredient] }).length) {
     shift.events.push({ type: 'wrong', ingredient, spot: i });
     return false;
@@ -334,9 +358,9 @@ export function addIngredient(shift, ingredient, spot = -1) {
   return true;
 }
 
-/** Start cooking at a station (bread in the toaster, eggs in the pot, satay on the grill). */
+/** Start cooking at a station (bread on the grill, eggs in the pot, satay on the grill). */
 export function cook(shift, id) {
-  if (shift.phase !== 'running' || !shift.stations[id]) return false;
+  if (shift.phase !== 'running' || !shift.stations[id] || STATIONS[id].dishes) return false;
   const slots = shift.stations[id].slots;
   const free = slots.indexOf(null);
   if (free < 0) {
@@ -345,6 +369,58 @@ export function cook(shift, id) {
   }
   slots[free] = { t: 0, state: 'cooking' };
   shift.events.push({ type: 'cook', station: id, slot: free });
+  return true;
+}
+
+/** Put a built dish into its station to cook whole (the curry puff into the wok, the prata onto the griddle). */
+export function cookDish(shift, spot) {
+  if (shift.phase !== 'running') return false;
+  const item = shift.prep[spot];
+  const dish = readyToCook(item);
+  if (!dish) {
+    shift.events.push({ type: 'not-ready', spot });
+    return false;
+  }
+  const id = DISHES[dish].cook;
+  const slots = shift.stations[id]?.slots;
+  const free = slots ? slots.indexOf(null) : -1;
+  if (free < 0) {
+    shift.events.push({ type: 'station-full', station: id });
+    return false;
+  }
+  slots[free] = { t: 0, state: 'cooking', item: { base: item.base, has: [...item.has] } };
+  shift.prep[spot] = null;
+  shift.events.push({ type: 'cook-dish', station: id, slot: free, spot, dish });
+  return true;
+}
+
+/** Flip what's waiting to be flipped on the griddle. */
+export function flip(shift, id) {
+  const slots = shift.stations[id]?.slots;
+  const k = slots && shift.phase === 'running' ? slots.findIndex(it => it && it.state === 'flip') : -1;
+  if (k < 0) return false;
+  slots[k] = { ...slots[k], state: 'cooking', t: 0, flipped: true };
+  shift.events.push({ type: 'flip', station: id, slot: k });
+  return true;
+}
+
+/** Take a cooked dish out of its station onto the counter (`spot`, or the first free one). */
+export function takeOut(shift, id, spot = -1) {
+  const slots = shift.stations[id]?.slots;
+  if (!slots || !STATIONS[id].dishes || shift.phase !== 'running') return false;
+  let k = -1;
+  slots.forEach((it, j) => { // (the ready one closest to burning)
+    if (it && it.state === 'ready' && (k < 0 || it.t > slots[k].t)) k = j;
+  });
+  if (k < 0) return false;
+  const i = spot >= 0 ? spot : shift.prep.indexOf(null);
+  if (i < 0 || i >= shift.prep.length || shift.prep[i]) {
+    shift.events.push({ type: 'counter-full' });
+    return false;
+  }
+  shift.prep[i] = { ...slots[k].item, cooked: true };
+  slots[k] = null;
+  shift.events.push({ type: 'take', station: id, spot: i, dish: dishOf(shift.prep[i]) });
   return true;
 }
 
@@ -473,11 +549,12 @@ export function step(shift) {
     st.slots.forEach((it, k) => {
       if (!it) return;
       it.t += TICK;
-      if (it.state === 'cooking' && it.t >= cookTime(shift, id)) {
-        it.state = 'ready';
+      const half = STATIONS[id].flip;
+      if (it.state === 'cooking' && it.t >= cookTime(shift, id) * (half ? .5 : 1)) {
+        it.state = half && !it.flipped ? 'flip' : 'ready';
         it.t = 0;
-        shift.events.push({ type: 'ready', station: id, slot: k });
-      } else if (it.state === 'ready' && it.t >= burnTime(shift, id)) {
+        shift.events.push({ type: it.state === 'flip' ? 'flip-me' : 'ready', station: id, slot: k });
+      } else if ((it.state === 'ready' || it.state === 'flip') && it.t >= burnTime(shift, id)) {
         it.state = 'burnt';
         shift.burnt++;
         shift.events.push({ type: 'burnt', station: id, slot: k });
@@ -502,8 +579,11 @@ export function step(shift) {
 
 /** A cooking slot's progress: 0..1 while cooking; how close to burning while ready. */
 export function progress(shift, id, it) {
-  if (it.state === 'cooking') return Math.min(1, it.t / cookTime(shift, id));
-  if (it.state === 'ready') return Math.min(1, it.t / burnTime(shift, id));
+  if (it.state === 'cooking') {
+    if (!STATIONS[id].flip) return Math.min(1, it.t / cookTime(shift, id));
+    return Math.min(1, (it.flipped ? .5 : 0) + it.t / cookTime(shift, id));
+  }
+  if (it.state === 'ready' || it.state === 'flip') return Math.min(1, it.t / burnTime(shift, id));
   return 1;
 }
 
@@ -516,7 +596,8 @@ export function speedTime(shift) {
 /**
  * Every player action, as recorded for a replay: [tick, kind, a, b].
  * kinds: 'base' (base, spot), 'add' (ingredient, spot), 'cook' (station), 'serve' (spot, seat),
- * 'bin-dish' (spot), 'bin-burnt' (station).
+ * 'bin-dish' (spot), 'bin-burnt' (station), 'cook-dish' (spot: into its wok/griddle), 'flip' (station),
+ * 'take' (station, spot: a cooked dish onto the counter).
  */
 export function act(shift, kind, a, b = -1) {
   switch (kind) {
@@ -526,6 +607,9 @@ export function act(shift, kind, a, b = -1) {
     case 'serve': return serve(shift, a, b);
     case 'bin-dish': return binDish(shift, a);
     case 'bin-burnt': return binBurnt(shift, a);
+    case 'cook-dish': return cookDish(shift, a);
+    case 'flip': return flip(shift, a);
+    case 'take': return takeOut(shift, a, b);
     default: return false;
   }
 }

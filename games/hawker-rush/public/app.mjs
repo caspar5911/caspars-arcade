@@ -147,6 +147,11 @@ function home({ focus = true } = {}) {
     Co.leave();
   }
   $('team').hidden = true;
+  try {
+    screen.orientation?.unlock?.();
+  } catch {
+    // (nothing locked)
+  }
   closeDialog('results');
   closeDialog('paused');
   closeDialog('recipes');
@@ -185,13 +190,17 @@ function home({ focus = true } = {}) {
   if (focus) focusHeading($('homeTitle'));
 }
 
+const dishArt = (id, opts = {}) => Art.dish(E.DISHES[id].base, E.DISHES[id].has, { cooked: Boolean(E.DISHES[id].cook), ...opts });
+const VERB = { toaster: 'Toast', grill: 'Grill', pot: 'Boil', wok: 'Fry', griddle: 'Cook' };
+
 function recipeCard(id) {
   const recipe = E.DISHES[id];
   const steps = recipe.has.map(part => {
     const ing = E.INGREDIENTS[part];
     return ing.cooked ? `${ing.name} from the ${E.STATIONS[ing.cooked].name.toLowerCase()}` : ing.name;
   });
-  return `<article class="recipe"><span class="recipe-art">${Art.dish(recipe.base, recipe.has)}</span>
+  if (recipe.cook) steps.push(`🔥 then into the ${E.STATIONS[recipe.cook].name.toLowerCase()}` + (E.STATIONS[recipe.cook].flip ? ' (flip it halfway!)' : ''));
+  return `<article class="recipe"><span class="recipe-art">${dishArt(id)}</span>
     <div><strong>${recipe.name}</strong><span>${E.BASES[recipe.base].name} · ${steps.join(' · ')}</span></div></article>`;
 }
 
@@ -258,7 +267,7 @@ function buildCounter() {
     el.innerHTML = '<span class="prep-art"></span><span class="prep-name"></span>';
     el.addEventListener('click', () => selectPrep(index));
     bindDrag(el, () => shift.prep[index] && {
-      kind: 'dish', value: index, html: Art.dish(shift.prep[index].base, shift.prep[index].has),
+      kind: 'dish', value: index, html: Art.dish(shift.prep[index].base, shift.prep[index].has, { cooked: shift.prep[index].cooked }),
       canServe: Boolean(E.dishOf(shift.prep[index])),
     });
     const bin = button('×', 'prep-bin');
@@ -273,7 +282,7 @@ function buildCounter() {
 }
 
 function stockButton(kind, id, name) {
-  const el = button('', 'stock ' + ({ cup: 'cupfam', plate: 'platefam', bowl: 'bowlfam' })[kind === 'base' ? id : E.INGREDIENTS[id].base]);
+  const el = button('', 'stock ' + ({ cup: 'cupfam', plate: 'platefam', bowl: 'bowlfam', pastry: 'pastryfam', dough: 'doughfam' })[kind === 'base' ? id : E.INGREDIENTS[id].base]);
   const html = Art.icon(id);
   el.dataset.stock = id;
   el.innerHTML = `${html}<span>${ingredientLabels[id] ?? name}</span>`;
@@ -291,7 +300,8 @@ function buildStations() {
     el.innerHTML = `<span class="station-picture"></span><span class="station-name">${station.name}</span><span class="station-track"></span><span class="station-info"></span>`;
     // one tap does the obvious thing: add what's ready, else start cooking, else bin what burnt
     el.addEventListener('click', () => stationTap(id));
-    bindDrag(el, () => shift.stations[id].slots.some(slot => slot?.state === 'ready') && {
+    // (ingredient stations: drag what's ready onto a dish; the wok and griddle plate up with a tap)
+    bindDrag(el, () => !station.dishes && shift.stations[id].slots.some(slot => slot?.state === 'ready') && {
       kind: 'add',
       value: station.makes,
       html: Art.dish(E.INGREDIENTS[station.makes].base, [station.makes]),
@@ -309,6 +319,7 @@ function buildStations() {
 
 function stationTap(id) {
   if (!playing()) return false;
+  if (E.STATIONS[id].dishes) return dishStationTap(id);
   const slots = shift.stations[id].slots;
   const make = E.STATIONS[id].makes;
   const base = E.INGREDIENTS[make].base;
@@ -331,15 +342,26 @@ function stationTap(id) {
 const LINES = [
   { label: '☕ Drinks', family: 'cupfam', base: 'cup', dishes: ['kopi', 'kopiO', 'teh', 'kopiPeng', 'tehPeng'] },
   { label: '🍞 Kaya toast', family: 'platefam', base: 'plate', dishes: ['toast'] },
+  { label: '🍗 Chicken rice', family: 'platefam', base: 'plate', dishes: ['rice', 'riceChilli'] },
   { label: '🥚 Eggs', family: 'bowlfam', base: 'bowl', dishes: ['eggs'] },
   { label: '🍢 Satay', family: 'platefam', base: 'plate', dishes: ['satay'] },
-  { label: '🍗 Chicken rice', family: 'platefam', base: 'plate', dishes: ['rice', 'riceChilli'] },
+  { label: '🥟 Curry puff', family: 'pastryfam', base: 'pastry', dishes: ['curryPuff'] },
+  { label: '🫓 Prata', family: 'doughfam', base: 'dough', dishes: ['prata', 'rotiTelur'] },
 ];
 
 function buildKitchen() {
   const lines = $('lines');
   lines.replaceChildren();
   run.stations = buildStations();
+  // the stove line: every fire and pot of the day, big, where you can see the food cooking
+  const stove = $('stove');
+  stove.replaceChildren();
+  for (const id of ['toaster', 'grill', 'pot', 'wok', 'griddle']) {
+    const view = run.stations.find(v => v.id === id);
+    if (view) stove.append(view.el);
+  }
+  stove.hidden = !run.stations.length;
+  stove.style.setProperty('--n', run.stations.length);
   const menu = E.menuFor(run.spec.mode === 'speed' ? E.DAYS : run.spec.day ?? 1);
   run.menu = menu;
   let shown = 0;
@@ -349,17 +371,15 @@ function buildKitchen() {
     const parts = [];
     for (const d of dishes) for (const ing of E.DISHES[d].has) if (!parts.includes(ing)) parts.push(ing);
     const row = document.createElement('div');
-    row.className = 'line ' + line.family + (parts.length + 1 >= 4 ? ' wide' : '');
-    row.style.setProperty('--n', parts.length + 1);
+    const raw = parts.filter(i => !E.INGREDIENTS[i].cooked).length;
+    row.style.setProperty('--n', raw + 1);
+    row.className = 'line ' + line.family + (raw + 1 >= 4 ? ' wide' : '');
     row.innerHTML = `<span class="line-label" title="${line.label.slice(2).trim()}">${line.label.split(' ')[0]}</span>`;
     row.setAttribute('aria-label', line.label.slice(2).trim());
     const items = document.createElement('div');
     items.className = 'line-items';
     items.append(stockButton('base', line.base, E.BASES[line.base].name));
-    for (const ing of parts) {
-      const cooked = E.INGREDIENTS[ing].cooked;
-      items.append(cooked ? run.stations.find(view => view.id === cooked).el : stockButton('add', ing, E.INGREDIENTS[ing].name));
-    }
+    for (const ing of parts) if (!E.INGREDIENTS[ing].cooked) items.append(stockButton('add', ing, E.INGREDIENTS[ing].name));
     row.append(items);
     lines.append(row);
     shown++;
@@ -373,6 +393,11 @@ function renderNext() {
   const next = new Set();
   for (const item of shift.prep) {
     if (!item || (E.dishOf(item) && wanted.includes(E.dishOf(item)))) continue;
+    const toCook = E.readyToCook(item);
+    if (toCook) {
+      next.add(E.DISHES[toCook].cook);
+      continue;
+    }
     const target = E.couldBe(item).find(d => wanted.includes(d));
     if (!target) continue;
     for (const ing of E.DISHES[target].has) if (!item.has.includes(ing)) next.add(E.INGREDIENTS[ing].cooked ?? ing);
@@ -746,9 +771,23 @@ function finishCoop() {
   openDialog('results');
 }
 
+const upright = () => matchMedia('(orientation: portrait)').matches && !document.body.classList.contains('upright');
+
+/** On phones: go full screen and sideways when a shift starts (where the browser allows it; iPhones don't). */
+async function goSideways() {
+  if (!matchMedia('(pointer: coarse)').matches) return;
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    await screen.orientation?.lock?.('landscape');
+  } catch {
+    // (not allowed here: the "turn your phone" card asks instead)
+  }
+  showFullscreen();
+}
+
 function playing() {
   if (run?.coop?.role === 'guest') return Boolean(shift?.phase === 'running' && !document.hidden); // (the host keeps time)
-  return run && shift?.phase === 'running' && !$('paused').open && !$('recipes').open && !document.hidden;
+  return run && shift?.phase === 'running' && !upright() && !$('paused').open && !$('recipes').open && !document.hidden;
 }
 
 function tutorialWaiting() {
@@ -828,6 +867,10 @@ function useStock(kind, id) {
 
 function selectPrep(index) {
   if (!playing()) return;
+  if (E.readyToCook(shift.prep[index])) {
+    action('cook-dish', index);
+    return;
+  }
   const dish = E.dishOf(shift.prep[index]);
   if (dish && (run.selected === index || E.servingFor(shift, dish) >= 0)) {
     action('serve', index);
@@ -884,7 +927,7 @@ function renderSeats() {
     el.setAttribute('aria-label', `${was}: ${waiting ? wanted.join(', ') : customer.leaving === 'happy' ? 'served' : 'leaving'}`);
     setContent(orders, customer.order.map((id, i) => {
       const dish = E.DISHES[id];
-      return `<span class="order${customer.got[i] ? ' done' : ''}">${Art.dish(dish.base, dish.has)}<span>${dish.name}</span></span>`;
+      return `<span class="order${customer.got[i] ? ' done' : ''}">${dishArt(id)}<span>${dish.name}</span></span>`;
     }).join(''));
     setContent(portrait, Art.person(customer.who, mood));
     const mark = run.selected >= 0 ? E.dishOf(shift.prep[run.selected]) : null;
@@ -907,24 +950,47 @@ function renderPrep() {
     wrap.classList.toggle('ready', ready);
     el.setAttribute('aria-pressed', String(index === run.selected));
     el.setAttribute('aria-label', `Prep spot ${index + 1}: ${label}${ingredients.length ? ', ' + ingredients.join(', ') : ''}${ready ? ', ready to serve' : ''}`);
-    setContent(art, item ? Art.dish(item.base, item.has, { face: Boolean(dish) }) : '<span class="prep-dash">+</span>');
+    const toCook = E.readyToCook(item);
+    wrap.classList.toggle('to-cook', Boolean(toCook));
+    setContent(art, item ? Art.dish(item.base, item.has, { face: Boolean(dish), cooked: item.cooked }) +
+      (toCook ? `<span class="cook-badge">🔥 ${VERB[E.DISHES[toCook].cook]}</span>` : '') : '<span class="prep-dash">+</span>');
     setText(name, ready ? `${label} ✓` : label);
     bin.hidden = !item;
   });
+}
+
+/** The wok and the griddle: flip what needs flipping, plate what's ready, else cook the dish you built. */
+function dishStationTap(id) {
+  const slots = shift.stations[id].slots;
+  if (slots.some(slot => slot?.state === 'flip')) return action('flip', id);
+  if (slots.some(slot => slot?.state === 'ready')) {
+    const spot = run.selected >= 0 && !shift.prep[run.selected] ? run.selected : -1;
+    return action('take', id, spot);
+  }
+  const mine = index => { const d = E.readyToCook(shift.prep[index]); return d && E.DISHES[d].cook === id; };
+  const spot = mine(run.selected) ? run.selected : shift.prep.findIndex((_, index) => mine(index));
+  if (spot >= 0 && slots.includes(null)) return action('cook-dish', spot);
+  if (slots.some(slot => slot?.state === 'burnt')) return action('bin-burnt', id);
+  F.sfx.nope();
+  const names = E.menuFor(run.spec.mode === 'speed' ? E.DAYS : run.spec.day ?? 1).filter(d => E.DISHES[d].cook === id).map(d => E.DISHES[d]);
+  transient(slots.includes(null) && names.length
+    ? `Build it first: ${names.map(d => [E.BASES[d.base].name, ...d.has.map(i => E.INGREDIENTS[i].name)].join(' + ')).join(' / ')}`
+    : `The ${E.STATIONS[id].name.toLowerCase()} is full. Wait for it.`);
+  return false;
 }
 
 function renderStations() {
   for (const view of run.stations) {
     const { id, el, art, meters, info } = view;
     const slots = shift.stations[id].slots;
-    const count = { cooking: 0, ready: 0, burnt: 0, empty: 0 };
+    const count = { cooking: 0, ready: 0, burnt: 0, empty: 0, flip: 0 };
     const shapes = slots.map((slot, index) => {
       const state = slot?.state ?? 'empty';
       count[state]++;
       const p = slot ? E.progress(shift, id, slot) : 0;
       meters[index].node.dataset.state = state;
       meters[index].fill.style.width = `${p * 100}%`;
-      return slot ? { state, p: Math.round(p * 8) / 8 } : null;
+      return slot ? { state, p: Math.round(p * 8) / 8, ...(slot.item ? { has: slot.item.has } : {}) } : null;
     });
     const key = JSON.stringify(shapes);
     if (key !== view.key) {
@@ -933,10 +999,12 @@ function renderStations() {
     }
     el.classList.toggle('has-burnt', count.burnt > 0);
     el.classList.toggle('has-ready', count.ready > 0);
-    el.classList.toggle('danger', shapes.some(s => s?.state === 'ready' && s.p > .55));
-    const verb = { toaster: 'Toast', pot: 'Boil', grill: 'Grill' }[id] ?? 'Cook';
-    const [short, text] = count.ready ? ['Ready!', 'ready, tap to add it'] : count.empty ? [verb, `tap to ${verb.toLowerCase()}`]
-      : count.burnt ? ['Burnt!', 'burnt, tap to bin it'] : ['Cooking…', 'cooking'];
+    el.classList.toggle('danger', shapes.some(s => (s?.state === 'ready' || s?.state === 'flip') && s.p > .55));
+    el.classList.toggle('needs-flip', count.flip > 0);
+    const verb = VERB[id] ?? 'Cook';
+    const dishes = E.STATIONS[id].dishes;
+    const [short, text] = count.flip ? ['Flip!', 'flip it now: tap'] : count.ready ? ['Ready!', dishes ? 'ready, tap to plate it' : 'ready, tap to add it']
+      : count.empty ? [verb, `tap to ${verb.toLowerCase()}`] : count.burnt ? ['Burnt!', 'burnt, tap to bin it'] : ['Cooking…', 'cooking'];
     setText(info, short);
     el.setAttribute('aria-label', `${E.STATIONS[id].name}: ${text}`);
   }
@@ -983,7 +1051,11 @@ function renderHint() {
     if (dish) message = `Tap a customer to serve ${E.DISHES[dish].name}, or tap the dish again.`;
     else message = item ? 'Add an ingredient to the selected dish.' : 'Choose a cup, plate or bowl for this spot.';
   }
-  if (run.mode !== 'speed' && shift.next >= shift.arrivals.length) {
+  const flipping = Object.keys(shift.stations).find(id => shift.stations[id].slots.some(slot => slot?.state === 'flip'));
+  const toCook = shift.prep.map(x => E.readyToCook(x)).find(Boolean);
+  if (flipping) message = `Flip it! Tap the ${E.STATIONS[flipping].name.toLowerCase()} before it burns.`;
+  else if (toCook) message = `${E.DISHES[toCook].name} built! Tap it to ${VERB[E.DISHES[toCook].cook].toLowerCase()} it 🔥`;
+  else if (run.mode !== 'speed' && shift.next >= shift.arrivals.length) {
     message = 'Last customers! Serve them all to close early for a bonus.';
   }
   setText($('hint'), hintOverride && shift.t < hintOverride.until ? hintOverride.text : guided ?? message);
@@ -1051,6 +1123,24 @@ function coins(from, n) {
   }
 }
 
+/** Food flying across the kitchen (into the wok, out onto the counter). */
+function fly(fromEl, toEl, html) {
+  if (!fromEl || !toEl || !run) return;
+  const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+  const f = document.createElement('div');
+  f.className = 'flying';
+  f.innerHTML = html;
+  f.style.left = a.left + a.width / 2 - 26 + 'px';
+  f.style.top = a.top + a.height / 2 - 26 + 'px';
+  document.body.append(f);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    f.style.left = b.left + b.width / 2 - 26 + 'px';
+    f.style.top = b.top + b.height / 2 - 30 + 'px';
+    f.style.transform = 'scale(.8) rotate(-12deg)';
+  }));
+  window.setTimeout(() => f.remove(), 420);
+}
+
 /** A little burst of hearts or sparkles. */
 function burst(anchor, char, n, kind) {
   if (!anchor || !run) return;
@@ -1106,6 +1196,16 @@ function handleEvents() {
         }
         break;
       case 'cook': F.sfx.cook(); break;
+      case 'cook-dish':
+        F.sfx.cook();
+        fly(run.prep[event.spot]?.wrap, station, dishArt(event.dish, { cooked: false }).replace(/<svg/, '<svg style="opacity:.95"'));
+        break;
+      case 'flip-me': F.sfx.ready(); float('Flip!', station, 'bad'); break;
+      case 'flip': F.sfx.base(); float('Flipped!', station, 'good'); break;
+      case 'take':
+        F.sfx.base();
+        fly(station, run.prep[event.spot]?.wrap, dishArt(event.dish));
+        break;
       case 'ready': F.sfx.ready(); float('Ready!', station, 'good'); break;
       case 'serve': F.sfx.serve(); break;
       case 'paid':
@@ -1154,6 +1254,9 @@ function dropTarget(event) {
   const node = document.elementFromPoint(event.clientX, event.clientY);
   if (!node || !drag) return null;
   if (drag.kind === 'dish') {
+    const station = node.closest('[data-station]');
+    const toCook = E.readyToCook(shift.prep[drag.value]);
+    if (station && toCook && E.DISHES[toCook].cook === station.dataset.station) return station;
     const seat = node.closest('[data-seat]');
     return seat && !seat.disabled && drag.canServe ? seat : null;
   }
@@ -1193,7 +1296,8 @@ window.addEventListener('pointerup', event => {
     suppressClick = drag.source;
     const target = dropTarget(event);
     if (target) {
-      if (drag.kind === 'dish') action('serve', drag.value, Number(target.dataset.seat));
+      if (drag.kind === 'dish' && target.dataset.station) action('cook-dish', drag.value);
+      else if (drag.kind === 'dish') action('serve', drag.value, Number(target.dataset.seat));
       else action(drag.kind, drag.value, Number(target.dataset.prep));
     }
   }
@@ -1551,6 +1655,52 @@ $('sound').addEventListener('click', () => {
 });
 showSound();
 $('openCoop').addEventListener('click', () => coopPage());
+
+// ⛶ full screen: on Android (and computers) straight away, and sideways on phones; on iPhone, how to install it
+// (opened from the home screen: already full screen. Note: page full screen also reports display-mode fullscreen)
+const installed = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches ||
+  (matchMedia('(display-mode: fullscreen)').matches && !document.fullscreenElement);
+function showFullscreen() {
+  const on = Boolean(document.fullscreenElement);
+  $('fullscreen').hidden = installed();
+  $('fullscreen').setAttribute('aria-label', on ? 'Leave full screen' : 'Full screen');
+  $('fullscreen').innerHTML = on
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+}
+$('fullscreen').addEventListener('click', async () => {
+  F.unlock();
+  if (document.fullscreenElement) {
+    await document.exitFullscreen().catch(() => {});
+  } else if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      if (matchMedia('(pointer: coarse)').matches) await screen.orientation?.lock?.('landscape');
+    } catch {
+      // (refused: nothing changes)
+    }
+  } else openDialog('fsTip');
+  showFullscreen();
+});
+$('fsTipClose').addEventListener('click', () => closeDialog('fsTip'));
+document.addEventListener('fullscreenchange', showFullscreen);
+showFullscreen();
+$('startShift').addEventListener('click', goSideways);
+$('coopGo').addEventListener('click', goSideways);
+$('coopJoin').addEventListener('click', goSideways);
+$('upright').addEventListener('click', () => {
+  document.body.classList.add('upright');
+  try {
+    localStorage.setItem('hawker-rush-upright', '1');
+  } catch {
+    // (asked again next visit)
+  }
+});
+try {
+  if (localStorage.getItem('hawker-rush-upright')) document.body.classList.add('upright');
+} catch {
+  // (no storage)
+}
 $('coopCreate').addEventListener('click', () => coopOpen(null));
 $('coopJoin').addEventListener('click', () => coopOpen($('coopCode').value));
 $('coopCode').addEventListener('keydown', event => { if (event.key === 'Enter') coopOpen($('coopCode').value); });
