@@ -32,6 +32,7 @@ let previousDirection = run.direction;
 let landedAt = -1e9; // (for the landing squash)
 let warnedFloor = -1; // (the flood warning, once a floor)
 let danger = 0; // 🎵 how close the water is, smoothed (the music follows it)
+let lostAt = -1e9; // (the calm loop comes back a moment after the splash)
 let view = { scale: 1, offset: 0, height: MIN_HEIGHT, ratio: 1 };
 // 🏆 this run, for the leaderboard: its ticket (null: started offline), engine ticks since the start, and the taps
 let currentTicket = null;
@@ -73,6 +74,7 @@ function react(from, to) {
   if (to === 'lost') {
     (run.impact.reason === 'flooded' ? feel.splash : feel.miss)();
     music.stop(false, run.impact.reason === 'flooded'); // (caught by the water: the music sinks)
+    lostAt = performance.now();
   }
   if (to === 'running' && (from === 'ready' || from === 'lost')) danger = 0;
 }
@@ -324,11 +326,15 @@ function frame(time) {
       availableTime -= TICK;
     }
     updateInterface();
-    // 🎵 the chase music: starts with a run (once sound is allowed), follows the water
+    // 🎵 background music, once sound is allowed: the chase during a run (it follows the water), and a calm loop
+    // on the start and game-over screens (back a moment after the splash)
     if (run.phase === 'running' || run.phase === 'smash') {
       if (!music.playing()) music.start(feel.output());
+      else if (music.isCalm()) music.setCalm(false);
       danger += (music.dangerFrom(run.floor - run.flood, FLOOD_GAP_MAX) - danger) * Math.min(1, elapsed * 3);
       music.update(danger, run.floor);
+    } else if (!music.playing() && time - lostAt > 1600) {
+      music.start(feel.output(), true);
     }
     if (run.phase === 'running') {
       if (run.direction !== previousDirection) feel.bounce();
