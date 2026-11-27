@@ -4,6 +4,7 @@ import * as F from './feel.mjs';
 import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
 
 const $ = id => document.getElementById(id);
+const bellButton = document.getElementById('bell'); // (kept: the counter is rebuilt each shift)
 const SAVE_KEY = 'hawker-rush-save';
 const pages = ['home', 'intro', 'shift', 'shop', 'boards'];
 const stationActions = { toaster: 'Toast bread', pot: 'Boil eggs', grill: 'Grill satay' };
@@ -151,7 +152,7 @@ function home({ focus = true } = {}) {
   F.musicStart(true);
   show('home', 'Hawker Rush');
   $('homeStall').innerHTML = stall(save.decor) +
-    `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.dish('cup', ['kopi', 'milk'])}${Art.person('uncle', 'happy')}</div>`;
+    `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.cat('cheer')}${Art.dish('cup', ['kopi', 'milk'], { face: true })}${Art.person('uncle', 'happy')}</div>`;
   $('play').textContent = save.day > E.DAYS ? `Play endless day ${save.day}` : `Play day ${save.day}`;
   $('wallet').textContent = money(save.wallet);
   const today = E.daily();
@@ -242,7 +243,7 @@ function buildCounter() {
   const counter = $('counter');
   counter.replaceChildren();
   counter.style.setProperty('--spots', shift.prep.length);
-  return shift.prep.map((_, index) => {
+  const views = shift.prep.map((_, index) => {
     const wrap = document.createElement('div');
     wrap.className = 'prep';
     wrap.dataset.prep = index;
@@ -261,6 +262,8 @@ function buildCounter() {
     counter.append(wrap);
     return { wrap, el, bin, art: el.querySelector('.prep-art'), name: el.querySelector('.prep-name') };
   });
+  counter.append(bellButton);
+  return views;
 }
 
 function stockButton(kind, id, name) {
@@ -275,55 +278,102 @@ function stockButton(kind, id, name) {
 }
 
 function buildStations() {
-  const parent = $('stations');
-  parent.replaceChildren();
-  parent.hidden = !shift.kitchen.stations.length;
   return shift.kitchen.stations.map(id => {
     const station = E.STATIONS[id];
-    const el = document.createElement('div');
-    el.className = 'station';
-    const cook = button('', 'station-cook');
-    cook.setAttribute('aria-label', stationActions[id]);
-    cook.title = stationActions[id];
-    cook.innerHTML = `<span class="station-picture"></span><span class="station-name">${station.name}</span>`;
-    cook.addEventListener('click', () => action('cook', id));
-    const take = button('Add', 'station-take');
-    take.setAttribute('aria-label', `Add ${E.INGREDIENTS[station.makes].name.toLowerCase()}`);
-    take.addEventListener('click', () => useStock('add', station.makes));
-    bindDrag(take, () => ({
+    const el = button('', 'station');
+    el.dataset.station = id;
+    el.innerHTML = `<span class="station-picture"></span><span class="station-name">${station.name}</span><span class="station-track"></span><span class="station-info"></span>`;
+    // one tap does the obvious thing: add what's ready, else start cooking, else bin what burnt
+    el.addEventListener('click', () => stationTap(id));
+    bindDrag(el, () => shift.stations[id].slots.some(slot => slot?.state === 'ready') && {
       kind: 'add',
       value: station.makes,
       html: Art.dish(E.INGREDIENTS[station.makes].base, [station.makes]),
-    }));
-    const bin = button('Bin', 'station-bin');
-    bin.setAttribute('aria-label', `Bin burnt food at ${station.name.toLowerCase()}`);
-    bin.title = `Bin burnt food (costs ${money(E.BURNT_COST)})`;
-    bin.addEventListener('click', () => action('bin-burnt', id));
-    const track = document.createElement('div');
-    track.className = 'station-track';
+    });
+    const track = el.querySelector('.station-track');
     const meters = shift.stations[id].slots.map(() => {
       const node = document.createElement('span');
       node.innerHTML = '<i></i>';
       track.append(node);
       return { node, fill: node.firstElementChild };
     });
-    const info = document.createElement('span');
-    info.className = 'station-info';
-    el.append(cook, take, bin, track, info);
-    parent.append(el);
-    return { id, el, cook, take, bin, meters, info, art: cook.firstElementChild };
+    return { id, el, meters, info: el.querySelector('.station-info'), art: el.querySelector('.station-picture') };
   });
 }
 
+function stationTap(id) {
+  if (!playing()) return false;
+  const slots = shift.stations[id].slots;
+  const make = E.STATIONS[id].makes;
+  const base = E.INGREDIENTS[make].base;
+  const ready = slots.some(slot => slot?.state === 'ready');
+  if (ready) {
+    const item = shift.prep[run.selected];
+    const fits = item && item.base === base && !item.has.includes(make) &&
+      E.couldBe({ base, has: [...item.has, make] }).length > 0;
+    const spot = fits ? run.selected : E.autoSpot(shift, make);
+    if (spot >= 0) return action('add', make, spot);
+  }
+  if (slots.includes(null)) return action('cook', id);
+  if (slots.some(slot => slot?.state === 'burnt')) return action('bin-burnt', id);
+  F.sfx.nope();
+  transient(ready ? `Put a ${E.BASES[base].name.toLowerCase()} on the counter first.` : `The ${E.STATIONS[id].name.toLowerCase()} is full. Wait for it.`);
+  return false;
+}
+
+// The kitchen, one row per dish (like the stations of a real stall): its cup, plate or bowl first, then what goes in.
+const LINES = [
+  { label: '☕ Drinks', family: 'cupfam', base: 'cup', dishes: ['kopi', 'kopiO', 'teh', 'kopiPeng', 'tehPeng'] },
+  { label: '🍞 Kaya toast', family: 'platefam', base: 'plate', dishes: ['toast'] },
+  { label: '🥚 Eggs', family: 'bowlfam', base: 'bowl', dishes: ['eggs'] },
+  { label: '🍢 Satay', family: 'platefam', base: 'plate', dishes: ['satay'] },
+  { label: '🍗 Chicken rice', family: 'platefam', base: 'plate', dishes: ['rice', 'riceChilli'] },
+];
+
 function buildKitchen() {
-  const bases = $('bases');
-  const ingredients = $('ingredients');
-  bases.replaceChildren();
-  ingredients.replaceChildren();
-  for (const id of shift.kitchen.bases) bases.append(stockButton('base', id, E.BASES[id].name));
-  for (const id of shift.kitchen.ingredients) ingredients.append(stockButton('add', id, E.INGREDIENTS[id].name));
-  ingredients.style.setProperty('--cols', Math.max(3, Math.min(6, shift.kitchen.ingredients.length)));
+  const lines = $('lines');
+  lines.replaceChildren();
   run.stations = buildStations();
+  const menu = E.menuFor(run.spec.mode === 'speed' ? E.DAYS : run.spec.day ?? 1);
+  run.menu = menu;
+  let shown = 0;
+  for (const line of LINES) {
+    const dishes = line.dishes.filter(d => menu.includes(d));
+    if (!dishes.length) continue;
+    const parts = [];
+    for (const d of dishes) for (const ing of E.DISHES[d].has) if (!parts.includes(ing)) parts.push(ing);
+    const row = document.createElement('div');
+    row.className = 'line ' + line.family + (parts.length + 1 >= 4 ? ' wide' : '');
+    row.style.setProperty('--n', parts.length + 1);
+    row.innerHTML = `<span class="line-label" title="${line.label.slice(2).trim()}">${line.label.split(' ')[0]}</span>`;
+    row.setAttribute('aria-label', line.label.slice(2).trim());
+    const items = document.createElement('div');
+    items.className = 'line-items';
+    items.append(stockButton('base', line.base, E.BASES[line.base].name));
+    for (const ing of parts) {
+      const cooked = E.INGREDIENTS[ing].cooked;
+      items.append(cooked ? run.stations.find(view => view.id === cooked).el : stockButton('add', ing, E.INGREDIENTS[ing].name));
+    }
+    row.append(items);
+    lines.append(row);
+    shown++;
+  }
+  lines.classList.toggle('roomy', shown <= 2);
+}
+
+/** What the dishes on the counter need next: those buttons glow. */
+function renderNext() {
+  const wanted = E.wanted(shift).map(w => w.dish);
+  const next = new Set();
+  for (const item of shift.prep) {
+    if (!item || (E.dishOf(item) && wanted.includes(E.dishOf(item)))) continue;
+    const target = E.couldBe(item).find(d => wanted.includes(d));
+    if (!target) continue;
+    for (const ing of E.DISHES[target].has) if (!item.has.includes(ing)) next.add(E.INGREDIENTS[ing].cooked ?? ing);
+  }
+  for (const el of $('lines').querySelectorAll('[data-stock], [data-station]')) {
+    el.classList.toggle('next', next.has(el.dataset.stock ?? el.dataset.station));
+  }
 }
 
 function buildGoals() {
@@ -357,6 +407,8 @@ function startShift() {
   };
   hintOverride = null;
   $('awning').innerHTML = stall(save.decor);
+  $('backdrop').innerHTML = Art.backdrop();
+  $('cat').html = null;
   $('fx').replaceChildren();
   show('shift', run.title, run.key ?? '');
   run.seats = buildSeats();
@@ -438,7 +490,7 @@ function useStock(kind, id) {
 function selectPrep(index) {
   if (!playing()) return;
   const dish = E.dishOf(shift.prep[index]);
-  if (run.selected === index && dish) {
+  if (dish && (run.selected === index || E.servingFor(shift, dish) >= 0)) {
     action('serve', index);
     return;
   }
@@ -471,6 +523,14 @@ function renderSeats() {
     el.classList.toggle('empty', !customer);
     el.classList.toggle('happy', customer?.leaving === 'happy');
     el.classList.toggle('angry', customer?.leaving === 'angry');
+    if (el.dataset.cid !== String(customer?.id ?? '')) {
+      el.dataset.cid = String(customer?.id ?? '');
+      el.classList.remove('arrive');
+      if (customer) {
+        void el.offsetWidth;
+        el.classList.add('arrive');
+      }
+    }
     if (!customer) {
       el.setAttribute('aria-label', `Seat ${index + 1} empty`);
       setContent(orders, '');
@@ -498,7 +558,8 @@ function renderSeats() {
 function renderPrep() {
   run.prep.forEach(({ wrap, el, art, name, bin }, index) => {
     const item = shift.prep[index];
-    const dish = E.dishOf(item);
+    const found = E.dishOf(item);
+    const dish = found && run.menu?.includes(found) ? found : null; // (only today's dishes count as finished)
     const ready = Boolean(dish && E.servingFor(shift, dish) >= 0);
     const label = dish ? E.DISHES[dish].name : item ? E.BASES[item.base].name : 'Empty';
     const ingredients = item?.has.map(ing => E.INGREDIENTS[ing].name) ?? [];
@@ -507,7 +568,7 @@ function renderPrep() {
     wrap.classList.toggle('ready', ready);
     el.setAttribute('aria-pressed', String(index === run.selected));
     el.setAttribute('aria-label', `Prep spot ${index + 1}: ${label}${ingredients.length ? ', ' + ingredients.join(', ') : ''}${ready ? ', ready to serve' : ''}`);
-    setContent(art, item ? Art.dish(item.base, item.has) : '<span class="prep-dash">+</span>');
+    setContent(art, item ? Art.dish(item.base, item.has, { face: Boolean(dish) }) : '<span class="prep-dash">+</span>');
     setText(name, ready ? `${label} ✓` : label);
     bin.hidden = !item;
   });
@@ -515,7 +576,7 @@ function renderPrep() {
 
 function renderStations() {
   for (const view of run.stations) {
-    const { id, el, art, cook, take, bin, meters, info } = view;
+    const { id, el, art, meters, info } = view;
     const slots = shift.stations[id].slots;
     const count = { cooking: 0, ready: 0, burnt: 0, empty: 0 };
     const shapes = slots.map((slot, index) => {
@@ -533,12 +594,12 @@ function renderStations() {
     }
     el.classList.toggle('has-burnt', count.burnt > 0);
     el.classList.toggle('has-ready', count.ready > 0);
-    cook.disabled = !count.empty;
-    take.disabled = !count.ready;
-    bin.disabled = !count.burnt;
-    setText(take, count.ready > 1 ? `Add ×${count.ready}` : 'Add');
-    const status = ['ready', 'burnt', 'cooking'].filter(state => count[state]).map(state => `${count[state]} ${state}`);
-    setText(info, status.length ? status.join(' · ') : `${count.empty} free`);
+    el.classList.toggle('danger', shapes.some(s => s?.state === 'ready' && s.p > .55));
+    const verb = { toaster: 'Toast', pot: 'Boil', grill: 'Grill' }[id] ?? 'Cook';
+    const [short, text] = count.ready ? ['Ready!', 'ready, tap to add it'] : count.empty ? [verb, `tap to ${verb.toLowerCase()}`]
+      : count.burnt ? ['Burnt!', 'burnt, tap to bin it'] : ['Cooking…', 'cooking'];
+    setText(info, short);
+    el.setAttribute('aria-label', `${E.STATIONS[id].name}: ${text}`);
   }
 }
 
@@ -564,18 +625,29 @@ function tutorialHint() {
   return `Add ${E.INGREDIENTS[id].name.toLowerCase()}. Tap it or drag it onto the cup.`;
 }
 
+/** Mochi the stall cat: cheers when you do well, worries when someone storms off, naps when it's quiet. */
+function catMood() {
+  if (shift.t < (run.cheerUntil ?? 0)) return 'cheer';
+  if (shift.t < (run.worryUntil ?? 0)) return 'worried';
+  if (!shift.seats.some(c => c && !c.leaving)) return 'sleep';
+  return 'idle';
+}
+
 function renderHint() {
   clearGuide();
   const guided = run.guided ? tutorialHint() : null;
   const item = shift.prep[run.selected];
-  const dish = E.dishOf(item);
-  let message = 'Tap ingredients or drag them to your prep spots.';
+  const found = E.dishOf(item);
+  const dish = found && run.menu?.includes(found) ? found : null;
+  let message = 'Tap a cup, plate or bowl, then its ingredients. Tap a finished dish to serve it.';
   if (run.selected >= 0) {
-    if (dish) message = `Tap a customer to serve ${E.DISHES[dish].name}, or tap the dish again to auto-serve.`;
+    if (dish) message = `Tap a customer to serve ${E.DISHES[dish].name}, or tap the dish again.`;
     else message = item ? 'Add an ingredient to the selected dish.' : 'Choose a cup, plate or bowl for this spot.';
   }
-  if (shift.next >= shift.arrivals.length && !shift.queue.length && shift.seats.every(c => !c)) {
-    message = 'All customers have left. The stall closes when the clock ends.';
+  if (run.mode !== 'speed' && shift.next >= shift.arrivals.length) {
+    message = 'Last customers! Serve them all to close early for a bonus.';
+  } else if (run.mode !== 'speed' && E.canCall(shift) && run.selected < 0 && !shift.prep.some(Boolean)) {
+    message = 'Quiet moment? Ring the bell to call the next customer in (they tip more).';
   }
   setText($('hint'), hintOverride && shift.t < hintOverride.until ? hintOverride.text : guided ?? message);
 }
@@ -598,8 +670,17 @@ function render() {
   renderSeats();
   renderPrep();
   renderStations();
+  renderNext();
   renderHint();
-  F.musicRush(Math.max(shift.seats.filter(c => c && !c.leaving).length / E.SEATS, run.mode !== 'speed' && time <= 10 ? 1 : 0));
+  const bell = bellButton;
+  bell.hidden = run.mode === 'speed' || run.guided;
+  const canCall = E.canCall(shift);
+  bell.disabled = !canCall;
+  bell.classList.toggle('ready', canCall);
+  setContent($('cat'), Art.cat(catMood()));
+  const wave = E.WAVES[shift.wave]?.[2];
+  $('shift').classList.toggle('rush', wave === 'lunch' || wave === 'dinner');
+  F.musicRush(Math.max(shift.seats.filter(c => c && !c.leaving).length / shift.seats.length, run.mode !== 'speed' && time <= 10 ? 1 : 0));
 }
 
 function transient(text) {
@@ -638,6 +719,24 @@ function coins(from, n) {
   }
 }
 
+/** A little burst of hearts or sparkles. */
+function burst(anchor, char, n, kind) {
+  if (!anchor || !run) return;
+  const r = anchor.getBoundingClientRect();
+  for (let k = 0; k < n; k++) {
+    const p = document.createElement('span');
+    p.className = 'particle ' + kind;
+    p.textContent = char;
+    const a = (Math.PI * 2 * k) / n + Math.random() * .7;
+    p.style.left = r.left + r.width / 2 + 'px';
+    p.style.top = r.top + r.height / 3 + 'px';
+    p.style.setProperty('--dx', Math.cos(a) * (26 + Math.random() * 20) + 'px');
+    p.style.setProperty('--dy', Math.sin(a) * (20 + Math.random() * 14) - 22 + 'px');
+    document.body.append(p);
+    window.setTimeout(() => p.remove(), 900);
+  }
+}
+
 function banner(text, tone = '') {
   const b = document.createElement('div');
   b.className = 'banner ' + tone;
@@ -654,15 +753,27 @@ function handleEvents() {
     switch (event.type) {
       case 'arrive':
         F.sfx.arrive();
-        if (!run.rushShown && shift.seats.every(c => c && !c.leaving)) {
-          run.rushShown = true;
-          banner('Rush hour!', 'bad');
-        }
+        if (event.called) float('Called in!', seat, 'good');
+        break;
+      case 'call': F.sfx.ding(); break;
+      case 'wave': {
+        const text = { lunch: 'Lunch rush!', breather: 'Phew… a breather', dinner: 'Dinner rush!', closing: 'Last orders!' }[event.wave];
+        if (text) banner(text, event.wave === 'breather' ? '' : 'bad');
+        if (event.wave === 'lunch' || event.wave === 'dinner') F.sfx.start();
+        break;
+      }
+      case 'closed-early':
+        F.sfx.ding();
+        banner(`Closed early! +${money(event.amount)}`);
+        run.cheerUntil = shift.t + 3;
         break;
       case 'base': F.sfx.base(); break;
       case 'add':
         F.sfx.add(E.INGREDIENTS[event.ingredient]?.base === 'cup' && event.ingredient !== 'ice');
-        if (event.dish) float(E.DISHES[event.dish].name + ' ✓', spot, 'good');
+        if (event.dish) {
+          float(E.DISHES[event.dish].name + ' ✓', spot, 'good');
+          burst(spot, '✦', 6, 'spark');
+        }
         break;
       case 'cook': F.sfx.cook(); break;
       case 'ready': F.sfx.ready(); float('Ready!', station, 'good'); break;
@@ -671,11 +782,20 @@ function handleEvents() {
         F.sfx.paid(event.combo);
         float('+' + money(event.amount), seat, 'good');
         coins(seat, Math.ceil(event.amount));
+        burst(seat, '♥', 7, 'heart');
+        if (event.combo >= 3 || event.perfect) run.cheerUntil = shift.t + 1.6;
         if (event.perfect) window.setTimeout(() => float('Perfect!', seat, 'good'), 300);
         if ([5, 10, 15, 20].includes(event.combo)) banner(`Combo ×${event.combo}!`);
         break;
-      case 'angry': F.sfx.angry(); float('Left!', seat, 'bad'); break;
-      case 'burnt': F.sfx.burnt(); float('Burnt!', station, 'bad'); break;
+      case 'angry':
+        F.sfx.angry();
+        float('Left!', seat, 'bad');
+        run.worryUntil = shift.t + 2.2;
+        $('shift').classList.remove('shake');
+        void $('shift').offsetWidth;
+        $('shift').classList.add('shake');
+        break;
+      case 'burnt': F.sfx.burnt(); float('Burnt!', station, 'bad'); run.worryUntil = shift.t + 1.5; break;
       case 'bin-burnt': F.sfx.trash(); float('Binned', station, 'bad'); break;
       case 'bin-dish': F.sfx.trash(); float('Binned', spot, 'bad'); break;
       case 'counter-full': F.sfx.nope(); transient('Pick an empty prep spot first.'); break;
@@ -820,6 +940,8 @@ function renderResults() {
   const rows = [['Customers served', served], ['Left or walked past', lost + passed]];
   if (mode === 'speed' && lost + passed) rows.push(['Time penalty', `+${10 * (lost + passed)} s`]);
   rows.push(['Tips and combos', money(tips)]);
+  if (shift.early) rows.push(['Closed early', `${shift.early} s early · +${money(shift.earlyBonus)}`]);
+  if (shift.called) rows.push(['Customers called in', shift.called]);
   if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
   if (burnt) rows.push(['Food burnt', burnt]);
   if (wasted) rows.push(['Dishes binned', wasted]);
@@ -1068,6 +1190,7 @@ $('shopBack').addEventListener('click', () => {
     home();
   }
 });
+bellButton.addEventListener('click', () => action('call', 0));
 $('pause').addEventListener('click', pause);
 $('resume').addEventListener('click', () => closeDialog('paused'));
 $('quit').addEventListener('click', () => home());

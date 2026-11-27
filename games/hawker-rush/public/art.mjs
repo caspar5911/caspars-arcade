@@ -80,9 +80,17 @@ export function bowl(has = []) {
 }
 
 /** A dish (on a counter, or in an order bubble) from its base and contents. */
-export function dish(base, has) {
-  return base === 'cup' ? cup(has) : base === 'bowl' ? bowl(has) : plate(has);
+export function dish(base, has, { face = false } = {}) {
+  const art = base === 'cup' ? cup(has) : base === 'bowl' ? bowl(has) : plate(has);
+  return face ? art.replace('</svg>', FACE[base] + '</svg>') : art;
 }
+
+// a finished dish smiles (so you can see at a glance it's done)
+const smile = (x, y, ink = '#2b1a10') => `<g class="dish-face"><circle cx="${x - 6}" cy="${y}" r="2.9" fill="#fff"/><circle cx="${x + 6}" cy="${y}" r="2.9" fill="#fff"/>` +
+  `<circle cx="${x - 6}" cy="${y + .4}" r="1.8" fill="#2b1a10"/><circle cx="${x + 6}" cy="${y + .4}" r="1.8" fill="#2b1a10"/>` +
+  `<path d="M${x - 3} ${y + 4} q3 3 6 0" fill="none" stroke="${ink}" stroke-width="1.8" stroke-linecap="round"/>` +
+  `<ellipse cx="${x - 11}" cy="${y + 4}" rx="2.8" ry="1.6" fill="#ff7a8a" opacity=".75"/><ellipse cx="${x + 11}" cy="${y + 4}" rx="2.8" ry="1.6" fill="#ff7a8a" opacity=".75"/></g>`;
+const FACE = { cup: smile(30, 42, '#fff4e0'), plate: smile(30, 50), bowl: smile(30, 45) };
 
 // ---------------------------------------------------------------------------------------------------- the kitchen's jars and things
 const ICONS = {
@@ -118,113 +126,247 @@ export function icon(id) {
   return (ICONS[id] ?? ICONS.cup)();
 }
 
-/** A cooking station with its slots: 'empty' | 'cooking' (p: 0..1) | 'ready' (p: how close to burning) | 'burnt'. */
-export function station(id, slots) {
-  if (id === 'toaster') {
-    const body = slots.map((s, k) => {
-      const x = 12 + k * 22;
-      const bread = !s ? '' : s.state === 'burnt' ? '#2a1c14' : s.state === 'ready' ? '#d48a32' : mix('#f3dfb1', '#d99a45', s.p);
-      const up = s && s.state !== 'cooking' ? -8 : 2;
-      return `${bread ? `<rect x="${x + 2}" y="${10 + up}" width="14" height="20" rx="4" fill="${bread}" stroke="#8a5a26" stroke-width="1.5"/>` : ''}` +
-        `<rect x="${x}" y="22" width="18" height="5" rx="2" fill="#333"/>`;
-    }).join('');
-    return svg(16 + slots.length * 22, 60, `<rect x="4" y="20" width="${8 + slots.length * 22}" height="34" rx="10" fill="#c9ced4" stroke="#7d858d" stroke-width="2"/>` +
-      body + smoke(slots), 'station-art');
+
+// ---------------------------------------------------------------------------------------------------- the kitchen's machines
+// Each has a little face: calm while cooking, sparkly when the food is ready, sweating when it's about to burn,
+// dizzy when it has burnt something.
+
+function machineFace(slots, x, y) {
+  const st = slots.filter(Boolean);
+  const burnt = st.some(s => s.state === 'burnt');
+  const danger = st.some(s => s.state === 'ready' && s.p > .55);
+  const ready = st.some(s => s.state === 'ready');
+  const cooking = st.some(s => s.state === 'cooking');
+  let eyes, mouth, extra = '';
+  if (burnt) {
+    eyes = `<path d="M${x - 9} ${y - 3} l5 5 m0 -5 l-5 5 M${x + 4} ${y - 3} l5 5 m0 -5 l-5 5" stroke="#2b1a10" stroke-width="2" stroke-linecap="round"/>`;
+    mouth = `<path d="M${x - 4} ${y + 6} q2 -2 4 0 q2 2 4 0" fill="none" stroke="#2b1a10" stroke-width="1.8" stroke-linecap="round"/>`;
+  } else if (danger) {
+    eyes = `<circle cx="${x - 6}" cy="${y}" r="3.2" fill="#fff" stroke="#2b1a10" stroke-width="1.2"/><circle cx="${x + 6}" cy="${y}" r="3.2" fill="#fff" stroke="#2b1a10" stroke-width="1.2"/><circle cx="${x - 6}" cy="${y}" r="1.4" fill="#2b1a10"/><circle cx="${x + 6}" cy="${y}" r="1.4" fill="#2b1a10"/>`;
+    mouth = `<ellipse cx="${x}" cy="${y + 7}" rx="2.6" ry="3" fill="#2b1a10"/>`;
+    extra = `<path class="sweat" d="M${x + 13} ${y - 8} q3 5 0 7 q-3 -2 0 -7 Z" fill="#7fd0ff" stroke="#3a8fc4" stroke-width=".8"/>`;
+  } else if (ready) {
+    eyes = `<path d="M${x - 9} ${y + 1} q3 -5 6 0 M${x + 3} ${y + 1} q3 -5 6 0" stroke="#2b1a10" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+    mouth = `<path d="M${x - 4} ${y + 5} q4 5 8 0 Z" fill="#c0392b" stroke="#2b1a10" stroke-width="1.4"/>`;
+    extra = `<g class="twinkle" fill="#fff6a0"><path d="M${x - 16} ${y - 9} l1.5 3.5 l3.5 1.5 l-3.5 1.5 l-1.5 3.5 l-1.5 -3.5 l-3.5 -1.5 l3.5 -1.5 Z"/><path d="M${x + 16} ${y - 11} l1.2 2.8 l2.8 1.2 l-2.8 1.2 l-1.2 2.8 l-1.2 -2.8 l-2.8 -1.2 l2.8 -1.2 Z"/></g>`;
+  } else {
+    eyes = `<g class="blink" style="transform-origin:${x}px ${y}px"><circle cx="${x - 6}" cy="${y}" r="2" fill="#2b1a10"/><circle cx="${x + 6}" cy="${y}" r="2" fill="#2b1a10"/></g>`;
+    mouth = cooking
+      ? `<path d="M${x - 3} ${y + 5} q3 2 6 0" fill="none" stroke="#2b1a10" stroke-width="1.6" stroke-linecap="round"/>`
+      : `<path d="M${x - 3} ${y + 5} h6" stroke="#2b1a10" stroke-width="1.6" stroke-linecap="round"/>`;
   }
-  if (id === 'pot') {
-    const eggs = slots.map((s, k) => {
-      if (!s) return '';
-      const x = 18 + k * 14;
-      const c = s.state === 'burnt' ? '#8a8a8a' : s.state === 'ready' ? '#fffdf4' : '#f4ecd8';
-      return `<ellipse cx="${x}" cy="22" rx="6" ry="7.5" fill="${c}" stroke="#b9ab8a" stroke-width="1.5" class="${s.state === 'cooking' ? 'bob' : ''}"/>`;
-    }).join('');
-    return svg(30 + slots.length * 14, 60, eggs + `<path d="M6 24 L${24 + slots.length * 14} 24 L${20 + slots.length * 14} 52 Q${15 + slots.length * 7} 56 10 52 Z" fill="#9aa3ab" stroke="#5f676e" stroke-width="2"/>` +
-      `<path d="M2 28 L6 28 M${24 + slots.length * 14} 28 L${28 + slots.length * 14} 28" stroke="#5f676e" stroke-width="4" stroke-linecap="round"/>` +
-      (slots.some(s => s && s.state === 'cooking') ? '<g class="steam" stroke="#ffffffaa" stroke-width="2" fill="none"><path d="M16 14 q-3 -4 0 -8"/><path d="M28 14 q-3 -4 0 -8"/></g>' : '') + smoke(slots), 'station-art');
-  }
-  // the satay grill
-  const sticks = slots.map((s, k) => {
-    if (!s) return '';
-    const y = 20 + k * 9;
-    const meat = s.state === 'burnt' ? '#1d120b' : s.state === 'ready' ? '#8a4a1e' : mix('#d98b7a', '#8a4a1e', s.p);
-    return `<line x1="6" y1="${y}" x2="${54}" y2="${y}" stroke="#d8b98a" stroke-width="2"/>` +
-      [0, 1, 2, 3].map(j => `<circle cx="${16 + j * 9}" cy="${y}" r="4" fill="${meat}" stroke="#4a240b"/>`).join('');
-  }).join('');
-  return svg(60, 60, '<rect x="4" y="34" width="52" height="18" rx="4" fill="#3a3a3a"/>' +
-    '<path d="M8 40 h44 M8 46 h44" stroke="#ff7a2a" stroke-width="2" opacity=".8"/>' + sticks + smoke(slots), 'station-art');
+  return `<g class="machine-face">${eyes}${mouth}<ellipse cx="${x - 11}" cy="${y + 4}" rx="2.6" ry="1.5" fill="#ff8a8a" opacity=".6"/><ellipse cx="${x + 11}" cy="${y + 4}" rx="2.6" ry="1.5" fill="#ff8a8a" opacity=".6"/>${extra}</g>`;
 }
-function smoke(slots) {
+
+function smoke(slots, w) {
   return slots.some(s => s && s.state === 'burnt')
-    ? '<g class="smoke" fill="#55555599"><circle cx="20" cy="10" r="6"/><circle cx="30" cy="6" r="7"/><circle cx="40" cy="11" r="5"/></g>'
+    ? `<g class="smoke" fill="#6b6b6b99"><circle cx="${w * .3}" cy="9" r="6"/><circle cx="${w * .5}" cy="5" r="7"/><circle cx="${w * .7}" cy="10" r="5"/></g>`
     : '';
 }
+
 function mix(a, b, t) {
   const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   const [x, y] = [p(a), p(b)];
   return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * Math.max(0, Math.min(1, t))).toString(16).padStart(2, '0')).join('');
 }
 
+/** A cooking station with its slots: null | {state: 'cooking'|'ready'|'burnt', p}. */
+export function station(id, slots) {
+  const n = slots.length;
+  if (id === 'toaster') {
+    const w = 24 + n * 24;
+    const bread = slots.map((s, k) => {
+      const x = 14 + k * 24;
+      if (!s) return `<rect x="${x}" y="24" width="18" height="4" rx="2" fill="#5a4a40"/>`;
+      const c = s.state === 'burnt' ? '#2a1c14' : s.state === 'ready' ? '#d88f35' : mix('#f6e3b8', '#d99a45', s.p);
+      const pop = s.state === 'cooking' ? 6 : -6;
+      return `<g class="${s.state === 'ready' ? 'pop-up' : ''}"><rect x="${x + 1}" y="${12 + pop}" width="16" height="18" rx="6" fill="${c}" stroke="#8a5a26" stroke-width="1.5"/>` +
+        (s.state !== 'burnt' ? `<rect x="${x + 4}" y="${15 + pop}" width="10" height="9" rx="3" fill="#fff4d6" opacity=".55"/>` : '') +
+        `</g><rect x="${x}" y="24" width="18" height="4" rx="2" fill="#5a4a40"/>`;
+    }).join('');
+    return svg(w, 70, bread +
+      `<rect x="6" y="26" width="${w - 12}" height="38" rx="14" fill="#ffd1dc" stroke="#d98aa0" stroke-width="2.5"/>` +
+      `<rect x="10" y="30" width="${w - 20}" height="6" rx="3" fill="#ffffff88"/>` +
+      `<rect x="${w - 10}" y="40" width="6" height="12" rx="3" fill="#d98aa0"/>` +
+      machineFace(slots, w / 2, 48) + smoke(slots, w), 'station-art');
+  }
+  if (id === 'pot') {
+    const w = 30 + n * 18;
+    const eggs = slots.map((s, k) => {
+      if (!s) return '';
+      const x = 22 + k * 18;
+      const c = s.state === 'burnt' ? '#8a7f70' : s.state === 'ready' ? '#fffdf4' : '#f6eedb';
+      return `<ellipse cx="${x}" cy="27" rx="7" ry="8.5" fill="${c}" stroke="#c9b88f" stroke-width="1.5" class="${s.state === 'cooking' ? 'bob' : ''}"/>`;
+    }).join('');
+    const boiling = slots.some(s => s && s.state === 'cooking');
+    return svg(w, 70, eggs +
+      `<path d="M6 30 L${w - 6} 30 L${w - 10} 60 Q${w / 2} 67 10 60 Z" fill="#9fd8e8" stroke="#4f97ad" stroke-width="2.5"/>` +
+      `<rect x="3" y="27" width="${w - 6}" height="7" rx="3.5" fill="#bfe6f1" stroke="#4f97ad" stroke-width="2"/>` +
+      `<path d="M0 36 h6 M${w - 6} 36 h6" stroke="#4f97ad" stroke-width="5" stroke-linecap="round"/>` +
+      (boiling ? `<g class="steam" stroke="#ffffffcc" stroke-width="2.2" fill="none" stroke-linecap="round"><path d="M${w * .35} 20 q-3 -5 0 -10"/><path d="M${w * .65} 20 q-3 -5 0 -10"/></g>` : '') +
+      machineFace(slots, w / 2, 46) + smoke(slots, w), 'station-art');
+  }
+  // the satay grill
+  const w = 76;
+  const sticks = slots.map((s, k) => {
+    if (!s) return '';
+    const y = 16 + k * (24 / Math.max(1, n));
+    const meat = s.state === 'burnt' ? '#1d120b' : s.state === 'ready' ? '#9a5222' : mix('#f0a090', '#9a5222', s.p);
+    return `<line x1="6" y1="${y}" x2="${w - 6}" y2="${y}" stroke="#e0c08a" stroke-width="2.2" stroke-linecap="round"/>` +
+      [0, 1, 2, 3].map(j => `<rect x="${16 + j * 12}" y="${y - 5}" width="10" height="10" rx="4" fill="${meat}" stroke="#5a2c0e" stroke-width="1"/>`).join('');
+  }).join('');
+  const hot = slots.some(s => s && s.state !== 'burnt');
+  return svg(w, 70, sticks +
+    `<rect x="4" y="38" width="${w - 8}" height="26" rx="10" fill="#ffb36b" stroke="#c96f2a" stroke-width="2.5"/>` +
+    `<path d="M10 40 h${w - 20}" stroke="#7a4a2a" stroke-width="3" stroke-linecap="round"/>` +
+    (hot ? `<g class="flicker"><path d="M14 40 q3 -8 6 0 M30 40 q3 -9 6 0 M46 40 q3 -8 6 0 M58 40 q3 -7 6 0" fill="#ff6a2a" stroke="#ffd23f" stroke-width="1"/></g>` : '') +
+    machineFace(slots, w / 2, 52) + smoke(slots, w), 'station-art');
+}
+
 // ---------------------------------------------------------------------------------------------------- customers
+// Round, big-headed and blinking. Each kind of customer has their own look; moods show on the face.
 const LOOKS = {
-  uncle: { skin: '#e8b98f', hair: '#e6e6e6', shirt: '#f2f2f2', extra: 'glasses', hairStyle: 'bald' },
-  auntie: { skin: '#f0c7a0', hair: '#3a2a22', shirt: '#d9468a', extra: 'flower', hairStyle: 'perm' },
-  office: { skin: '#f2cfae', hair: '#1d1d1d', shirt: '#3b6fd8', extra: 'tie', hairStyle: 'neat' },
-  student: { skin: '#e9c09c', hair: '#2a1d15', shirt: '#ffffff', extra: 'cap', hairStyle: 'short' },
-  worker: { skin: '#c98d62', hair: '#1a1a1a', shirt: '#f08a1c', extra: 'hardhat', hairStyle: 'short' },
-  kid: { skin: '#f6d2b0', hair: '#4a2d1a', shirt: '#43b37a', extra: 'none', hairStyle: 'kid' },
-  tourist: { skin: '#f6d5c3', hair: '#d6a34a', shirt: '#29b6c7', extra: 'sunhat', hairStyle: 'long' },
+  uncle: { skin: '#f0c49a', hair: '#e8e8e8', shirt: '#f4f4f4', trim: '#9ad0f5', style: 'bald' },
+  auntie: { skin: '#f6cfa8', hair: '#3a2a22', shirt: '#ff8fb8', trim: '#ffd23f', style: 'perm' },
+  office: { skin: '#f5d3b4', hair: '#262626', shirt: '#6f9df2', trim: '#e33b4c', style: 'neat' },
+  student: { skin: '#efc6a2', hair: '#2e2018', shirt: '#ffffff', trim: '#ff6b5a', style: 'cap' },
+  worker: { skin: '#d79c70', hair: '#1a1a1a', shirt: '#ffa53a', trim: '#ffe066', style: 'hardhat' },
+  kid: { skin: '#fad9bb', hair: '#5a341d', shirt: '#6fd39a', trim: '#ffe066', style: 'kid' },
+  tourist: { skin: '#f8dccb', hair: '#e3b257', shirt: '#4fd0dc', trim: '#ff8fb8', style: 'sunhat' },
 };
+const BLINK = { uncle: 0, auntie: 1.3, office: 2.2, student: .7, worker: 3.1, kid: 1.8, tourist: 2.7 };
+
+function hairOf(L) {
+  const h = L.hair;
+  switch (L.style) {
+    case 'bald':
+      return `<path d="M15 44 q-3 -12 5 -18 M65 44 q3 -12 -5 -18" stroke="${h}" stroke-width="7" fill="none" stroke-linecap="round"/>` +
+        '<ellipse cx="33" cy="22" rx="8" ry="4" fill="#ffffff66" transform="rotate(-20 33 22)"/>';
+    case 'perm':
+      return `<g fill="${h}">${[[18, 26], [28, 17], [40, 14], [52, 17], [62, 26], [14, 38], [66, 38]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="10"/>`).join('')}</g>`;
+    case 'neat':
+      return `<path d="M13 42 Q12 14 40 13 Q68 14 67 42 Q62 26 46 24 Q30 30 16 40 Z" fill="${h}"/><path d="M44 16 q10 2 14 10" stroke="#ffffff33" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+    case 'cap':
+      return `<path d="M14 40 Q14 18 40 17 Q66 18 66 40 Q50 30 14 40 Z" fill="${h}"/>` +
+        `<path d="M13 32 Q14 9 40 9 Q66 9 67 32 Z" fill="#ff5a4a"/><path d="M40 28 L76 31 Q70 37 40 34 Z" fill="#d93a2a"/><circle cx="40" cy="10" r="3" fill="#d93a2a"/>`;
+    case 'hardhat':
+      return `<path d="M14 40 Q14 22 40 21 Q66 22 66 40 Z" fill="${h}"/>` +
+        '<path d="M12 33 Q13 7 40 7 Q67 7 68 33 Z" fill="#ffd23f" stroke="#e0a800" stroke-width="2"/><rect x="8" y="31" width="64" height="6" rx="3" fill="#ffd23f" stroke="#e0a800" stroke-width="1.5"/><rect x="36" y="9" width="8" height="22" rx="3" fill="#ffe680"/>';
+    case 'kid':
+      return `<path d="M13 42 Q12 15 40 14 Q68 15 67 42 Q60 28 50 30 Q44 22 36 30 Q24 26 13 42 Z" fill="${h}"/>` +
+        `<path d="M40 15 q-2 -10 7 -11" stroke="${h}" stroke-width="4" fill="none" stroke-linecap="round"/>` +
+        `<circle cx="13" cy="44" r="6" fill="${h}"/><circle cx="67" cy="44" r="6" fill="${h}"/><circle cx="13" cy="44" r="2.4" fill="#ff5a8a"/><circle cx="67" cy="44" r="2.4" fill="#ff5a8a"/>`;
+    case 'sunhat':
+      return `<path d="M12 60 Q8 20 40 18 Q72 20 68 60 L62 60 Q64 30 40 28 Q16 30 18 60 Z" fill="${h}"/>` +
+        '<ellipse cx="40" cy="24" rx="38" ry="8" fill="#fbe6b0" stroke="#d8b45c" stroke-width="2"/><path d="M22 24 Q24 4 40 4 Q56 4 58 24 Z" fill="#fbe6b0" stroke="#d8b45c" stroke-width="2"/><rect x="22" y="18" width="36" height="5" fill="#ff7aa8"/><circle cx="57" cy="18" r="4" fill="#ffd23f"/>';
+    default:
+      return '';
+  }
+}
 
 /** A customer (head and shoulders), with a mood: 'happy' | 'ok' | 'cross' | 'angry' | 'eating'. */
 export function person(who, mood = 'ok') {
   const L = LOOKS[who] ?? LOOKS.student;
-  const small = who === 'kid';
-  const s = small ? .88 : 1;
-  let hair = '';
-  switch (L.hairStyle) {
-    case 'bald': hair = `<path d="M22 32 q-2 -10 6 -14 M58 32 q2 -10 -6 -14" stroke="${L.hair}" stroke-width="5" fill="none" stroke-linecap="round"/>`; break;
-    case 'perm': hair = `<g fill="${L.hair}">${[18, 28, 40, 52, 62].map((x, i) => `<circle cx="${x}" cy="${20 - (i % 2) * 3}" r="9"/>`).join('')}<circle cx="16" cy="32" r="7"/><circle cx="64" cy="32" r="7"/></g>`; break;
-    case 'neat': hair = `<path d="M20 30 Q22 12 40 12 Q58 12 60 30 Q50 20 34 22 Z" fill="${L.hair}"/>`; break;
-    case 'long': hair = `<path d="M18 46 Q14 14 40 13 Q66 14 62 46 L56 46 Q58 24 40 22 Q22 24 24 46 Z" fill="${L.hair}"/>`; break;
-    case 'kid': hair = `<path d="M20 30 Q24 10 40 12 Q56 10 60 30 Q52 18 46 22 Q40 14 32 22 Q26 18 20 30 Z" fill="${L.hair}"/>`; break;
-    default: hair = `<path d="M20 30 Q22 12 40 12 Q58 12 60 30 Q40 20 20 30 Z" fill="${L.hair}"/>`;
+  const s = who === 'kid' ? .86 : 1;
+  const hx = 40, hy = 44; // the middle of the face
+  let eyes;
+  if (mood === 'happy' || mood === 'eating') {
+    eyes = `<path d="M${hx - 14} ${hy + 1} q5 -7 10 0 M${hx + 4} ${hy + 1} q5 -7 10 0" stroke="#2b1a10" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  } else {
+    const narrow = mood === 'angry' ? 3.2 : 5.2;
+    const eye = x => `<ellipse cx="${x}" cy="${hy}" rx="4.4" ry="${narrow}" fill="#2b1a10"/>` +
+      (mood === 'angry' ? '' : `<circle cx="${x - 1.4}" cy="${hy - 2}" r="1.7" fill="#fff"/><circle cx="${x + 1.5}" cy="${hy + 1.6}" r=".8" fill="#fff"/>`);
+    eyes = `<g class="blink" style="transform-origin:${hx}px ${hy}px;animation-delay:-${BLINK[who] ?? 0}s">${eye(hx - 9)}${eye(hx + 9)}</g>`;
   }
-  let hat = '';
-  if (L.extra === 'cap') hat = '<path d="M20 24 Q22 8 40 8 Q58 8 60 24 Z" fill="#d23a2a"/><path d="M40 22 L70 24 Q64 28 40 26 Z" fill="#b02a1d"/>';
-  if (L.extra === 'hardhat') hat = '<path d="M18 26 Q20 6 40 6 Q60 6 62 26 Z" fill="#ffc21a" stroke="#c99400" stroke-width="2"/><rect x="14" y="24" width="52" height="5" rx="2" fill="#ffc21a" stroke="#c99400"/>';
-  if (L.extra === 'sunhat') hat = '<ellipse cx="40" cy="20" rx="34" ry="7" fill="#f3dfa8" stroke="#c9a85a" stroke-width="2"/><path d="M24 20 Q26 4 40 4 Q54 4 56 20 Z" fill="#f3dfa8" stroke="#c9a85a" stroke-width="2"/><rect x="24" y="16" width="32" height="4" fill="#e85d5d"/>';
-  const eyes = mood === 'happy' || mood === 'eating'
-    ? '<path d="M30 36 q4 -5 8 0 M44 36 q4 -5 8 0" stroke="#2b1a10" stroke-width="2.6" fill="none" stroke-linecap="round"/>'
+  const brows = mood === 'cross'
+    ? `<path d="M${hx - 15} ${hy - 10} l8 3 M${hx + 15} ${hy - 10} l-8 3" stroke="#2b1a10" stroke-width="2.4" stroke-linecap="round"/>`
     : mood === 'angry'
-      ? '<path d="M29 31 l8 4 M51 31 l-8 4" stroke="#2b1a10" stroke-width="2.6" stroke-linecap="round"/><circle cx="34" cy="38" r="2.6" fill="#2b1a10"/><circle cx="48" cy="38" r="2.6" fill="#2b1a10"/>'
-      : '<circle cx="34" cy="37" r="2.8" fill="#2b1a10"/><circle cx="48" cy="37" r="2.8" fill="#2b1a10"/>';
-  const brows = mood === 'cross' ? '<path d="M30 30 l7 2 M52 30 l-7 2" stroke="#2b1a10" stroke-width="2.2" stroke-linecap="round"/>' : '';
+      ? `<path d="M${hx - 15} ${hy - 11} l10 5 M${hx + 15} ${hy - 11} l-10 5" stroke="#2b1a10" stroke-width="3" stroke-linecap="round"/>`
+      : '';
   const mouth = {
-    happy: '<path d="M33 45 q8 9 16 0" fill="#c0392b" stroke="#2b1a10" stroke-width="2"/>',
-    eating: '<ellipse cx="41" cy="47" rx="5" ry="4" fill="#c0392b" stroke="#2b1a10" stroke-width="2" class="chew"/>',
-    ok: '<path d="M35 46 q6 4 12 0" fill="none" stroke="#2b1a10" stroke-width="2.4" stroke-linecap="round"/>',
-    cross: '<path d="M35 48 h12" stroke="#2b1a10" stroke-width="2.4" stroke-linecap="round"/>',
-    angry: '<path d="M34 49 q7 -6 14 0" fill="none" stroke="#2b1a10" stroke-width="2.6" stroke-linecap="round"/>',
+    happy: `<path d="M${hx - 6} ${hy + 9} q6 9 12 0 Z" fill="#e0475a" stroke="#2b1a10" stroke-width="2" stroke-linejoin="round"/><path d="M${hx - 3} ${hy + 13} q3 2 6 0" fill="#ff9aa8"/>`,
+    eating: `<ellipse cx="${hx}" cy="${hy + 11}" rx="5" ry="4" fill="#e0475a" stroke="#2b1a10" stroke-width="2" class="chew"/>`,
+    ok: `<path d="M${hx - 5} ${hy + 9} q2.5 3 5 0 q2.5 3 5 0" fill="none" stroke="#2b1a10" stroke-width="2.2" stroke-linecap="round"/>`,
+    cross: `<path d="M${hx - 6} ${hy + 12} q3 -3 6 0 q3 3 6 0" fill="none" stroke="#2b1a10" stroke-width="2.2" stroke-linecap="round"/>`,
+    angry: `<path d="M${hx - 7} ${hy + 14} q7 -8 14 0" fill="#7a1c1c" stroke="#2b1a10" stroke-width="2.2" stroke-linecap="round"/>`,
   }[mood] ?? '';
-  const glasses = L.extra === 'glasses' ? '<g fill="none" stroke="#333" stroke-width="2"><circle cx="34" cy="37" r="6"/><circle cx="48" cy="37" r="6"/><path d="M40 37 h2"/></g>' : '';
-  const flower = L.extra === 'flower' ? '<g transform="translate(60 18)"><circle r="4" fill="#ffd23f"/>' + [0, 72, 144, 216, 288].map(a => `<circle cx="${6 * Math.cos(a * Math.PI / 180)}" cy="${6 * Math.sin(a * Math.PI / 180)}" r="3.6" fill="#ff7aa8"/>`).join('') + '</g>' : '';
-  const tie = L.extra === 'tie' ? '<path d="M40 70 l-4 6 l4 16 l4 -16 Z" fill="#c8102e"/>' : '';
-  const cheeks = mood === 'angry' || mood === 'cross' ? '<ellipse cx="27" cy="44" rx="5" ry="3" fill="#ff4a3a" opacity=".45"/><ellipse cx="55" cy="44" rx="5" ry="3" fill="#ff4a3a" opacity=".45"/>' : '<ellipse cx="27" cy="44" rx="5" ry="3" fill="#ff9a8a" opacity=".35"/><ellipse cx="55" cy="44" rx="5" ry="3" fill="#ff9a8a" opacity=".35"/>';
-  const steam = mood === 'angry' ? '<g class="fume" fill="#ffffffcc"><circle cx="14" cy="14" r="5"/><circle cx="66" cy="12" r="5"/></g>' : '';
+  const blush = mood === 'angry' ? '#ff3a3a' : '#ff8a9a';
+  const cheeks = `<ellipse cx="${hx - 16}" cy="${hy + 7}" rx="5.5" ry="3.4" fill="${blush}" opacity="${mood === 'angry' ? .55 : .6}"/><ellipse cx="${hx + 16}" cy="${hy + 7}" rx="5.5" ry="3.4" fill="${blush}" opacity="${mood === 'angry' ? .55 : .6}"/>`;
+  const glasses = L.style === 'bald' ? `<g fill="#ffffff33" stroke="#4a3a30" stroke-width="2"><circle cx="${hx - 9}" cy="${hy}" r="7.5"/><circle cx="${hx + 9}" cy="${hy}" r="7.5"/><path d="M${hx - 1.5} ${hy} h3" fill="none"/></g>` +
+    `<path d="M${hx - 9} ${hy + 7} q4.5 -3 9 0 q4.5 -3 9 0 q-4.5 5 -9 1 q-4.5 4 -9 -1 Z" fill="#eaeaea"/>` : '';
+  const flower = L.style === 'perm' ? `<g transform="translate(62 20)"><circle r="4.5" fill="#ffd23f"/>${[0, 72, 144, 216, 288].map(a => `<circle cx="${(6.5 * Math.cos(a * Math.PI / 180)).toFixed(1)}" cy="${(6.5 * Math.sin(a * Math.PI / 180)).toFixed(1)}" r="4" fill="#ff7aa8"/>`).join('')}</g>` : '';
+  const tie = L.style === 'neat' ? '<path d="M40 76 l-5 5 l5 17 l5 -17 Z" fill="#e33b4c"/>' : '';
+  const collar = `<path d="M30 76 L40 84 L50 76" fill="none" stroke="${L.trim}" stroke-width="3" stroke-linejoin="round"/>`;
+  const extras = {
+    happy: '<g class="heart-up" fill="#ff5a7a"><path d="M68 22 c-2 -4 -8 -2 -6 3 l6 6 l6 -6 c2 -5 -4 -7 -6 -3 Z"/></g>',
+    eating: '<g class="twinkle" fill="#ffd23f"><path d="M10 26 l1.6 3.6 l3.6 1.6 l-3.6 1.6 l-1.6 3.6 l-1.6 -3.6 l-3.6 -1.6 l3.6 -1.6 Z"/><path d="M70 30 l1.3 3 l3 1.3 l-3 1.3 l-1.3 3 l-1.3 -3 l-3 -1.3 l3 -1.3 Z"/></g>',
+    cross: '<path class="sweat" d="M66 30 q4 7 0 10 q-4 -3 0 -10 Z" fill="#7fd0ff" stroke="#3a8fc4" stroke-width="1"/>',
+    angry: '<g class="fume" fill="#ffffffdd"><circle cx="10" cy="20" r="6"/><circle cx="70" cy="18" r="6"/></g><path d="M60 20 l4 4 m0 -4 l-4 4 M66 14 l3 3" stroke="#ff3a3a" stroke-width="2.4" stroke-linecap="round"/>',
+  }[mood] ?? '';
   return svg(80, 100,
     `<g transform="translate(${40 - 40 * s} ${100 - 100 * s}) scale(${s})">` +
-    `<path d="M14 100 Q14 70 40 68 Q66 70 66 100 Z" fill="${L.shirt}" stroke="#00000022" stroke-width="2"/>` + tie +
-    `<rect x="34" y="56" width="12" height="12" fill="${L.skin}"/>` +
-    `<circle cx="40" cy="38" r="22" fill="${L.skin}"/>` + hair + cheeks + eyes + brows + glasses + mouth + hat + flower + steam +
+    `<path d="M16 100 Q16 78 40 76 Q64 78 64 100 Z" fill="${L.shirt}" stroke="#00000022" stroke-width="2"/>` + collar + tie +
+    `<circle cx="${hx}" cy="${hy}" r="28" fill="${L.skin}"/>` +
+    (mood === 'angry' ? `<circle cx="${hx}" cy="${hy}" r="28" fill="#ff3a3a" opacity=".18"/>` : '') +
+    `<ellipse cx="13" cy="${hy + 2}" rx="4" ry="5.5" fill="${L.skin}"/><ellipse cx="67" cy="${hy + 2}" rx="4" ry="5.5" fill="${L.skin}"/>` +
+    hairOf(L) + cheeks + eyes + brows + glasses + mouth + flower + extras +
     '</g>', 'person');
+}
+
+// ---------------------------------------------------------------------------------------------------- Mochi, the stall cat
+/** The stall's cat (a round ginger-and-white cat). mood: 'idle' | 'sleep' | 'cheer' | 'worried'. */
+export function cat(mood = 'idle') {
+  const eyes = {
+    idle: '<g class="blink" style="transform-origin:40px 46px"><ellipse cx="32" cy="46" rx="3" ry="3.8" fill="#2b1a10"/><ellipse cx="48" cy="46" rx="3" ry="3.8" fill="#2b1a10"/><circle cx="31" cy="44.5" r="1.1" fill="#fff"/><circle cx="47" cy="44.5" r="1.1" fill="#fff"/></g>',
+    sleep: '<path d="M28 47 q4 3 8 0 M44 47 q4 3 8 0" stroke="#2b1a10" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+    cheer: '<path d="M28 47 q4 -5 8 0 M44 47 q4 -5 8 0" stroke="#2b1a10" stroke-width="2.4" fill="none" stroke-linecap="round"/>',
+    worried: '<ellipse cx="32" cy="46" rx="3.4" ry="4.4" fill="#2b1a10"/><ellipse cx="48" cy="46" rx="3.4" ry="4.4" fill="#2b1a10"/><circle cx="31" cy="44.5" r="1.4" fill="#fff"/><circle cx="47" cy="44.5" r="1.4" fill="#fff"/><path d="M27 39 l7 2 M53 39 l-7 2" stroke="#2b1a10" stroke-width="1.8" stroke-linecap="round"/>',
+  }[mood] ?? '';
+  const mouth = mood === 'cheer'
+    ? '<path d="M36 52 q4 6 8 0 Z" fill="#e0475a" stroke="#2b1a10" stroke-width="1.5"/>'
+    : '<path d="M36 52 q2 2 4 0 q2 2 4 0" fill="none" stroke="#2b1a10" stroke-width="1.6" stroke-linecap="round"/>';
+  const paws = mood === 'cheer'
+    ? '<ellipse cx="16" cy="40" rx="6" ry="5" fill="#fffaf0" stroke="#e0a060" stroke-width="1.5"/><ellipse cx="64" cy="40" rx="6" ry="5" fill="#fffaf0" stroke="#e0a060" stroke-width="1.5"/>'
+    : '<ellipse cx="30" cy="74" rx="6" ry="4" fill="#fffaf0" stroke="#e0a060" stroke-width="1.5"/><ellipse cx="50" cy="74" rx="6" ry="4" fill="#fffaf0" stroke="#e0a060" stroke-width="1.5"/>';
+  const zzz = mood === 'sleep' ? '<g class="zzz" fill="#7a5a40" font-family="system-ui" font-weight="900"><text x="58" y="26" font-size="10">z</text><text x="66" y="16" font-size="13">Z</text></g>' : '';
+  const sparkle = mood === 'cheer' ? '<g class="twinkle" fill="#ffd23f"><path d="M8 18 l2 4.5 l4.5 2 l-4.5 2 l-2 4.5 l-2 -4.5 l-4.5 -2 l4.5 -2 Z"/><path d="M72 22 l1.6 3.6 l3.6 1.6 l-3.6 1.6 l-1.6 3.6 l-1.6 -3.6 l-3.6 -1.6 l3.6 -1.6 Z"/></g>' : '';
+  const sweat = mood === 'worried' ? '<path class="sweat" d="M60 32 q3 6 0 8 q-3 -2 0 -8 Z" fill="#7fd0ff" stroke="#3a8fc4" stroke-width=".8"/>' : '';
+  return svg(80, 80,
+    '<path class="tail" d="M60 70 q18 -2 14 -22 q-2 -6 -6 -3 q2 14 -10 17" fill="#f2a24a" stroke="#c97a2a" stroke-width="1.5" style="transform-origin:60px 70px"/>' +
+    '<ellipse cx="40" cy="64" rx="24" ry="14" fill="#fffaf0" stroke="#e0a060" stroke-width="1.5"/>' +
+    '<path d="M18 30 L22 12 L34 24 Z" fill="#f2a24a" stroke="#c97a2a" stroke-width="1.5" stroke-linejoin="round"/><path d="M62 30 L58 12 L46 24 Z" fill="#f2a24a" stroke="#c97a2a" stroke-width="1.5" stroke-linejoin="round"/>' +
+    '<path d="M22 28 L24 17 L31 25 Z" fill="#ffb0c0"/><path d="M58 28 L56 17 L49 25 Z" fill="#ffb0c0"/>' +
+    '<ellipse cx="40" cy="44" rx="24" ry="20" fill="#fffaf0" stroke="#e0a060" stroke-width="1.5"/>' +
+    '<path d="M24 32 Q40 18 56 32 Q50 36 40 30 Q30 36 24 32 Z" fill="#f2a24a"/>' +
+    '<path d="M38 49 l2 2 l2 -2 Z" fill="#ff7a9a"/>' +
+    '<ellipse cx="27" cy="52" rx="4.5" ry="2.6" fill="#ff9aaa" opacity=".6"/><ellipse cx="53" cy="52" rx="4.5" ry="2.6" fill="#ff9aaa" opacity=".6"/>' +
+    '<path d="M18 50 h-9 M18 54 l-8 3 M62 50 h9 M62 54 l8 3" stroke="#c9a080" stroke-width="1.2" stroke-linecap="round"/>' +
+    eyes + mouth + paws + zzz + sparkle + sweat, 'cat cat-' + mood);
 }
 
 // ---------------------------------------------------------------------------------------------------- the stall
 /** The stall's awning and front, with any decorations bought. */
 export function stallTop(decor = {}) {
-  const stripes = Array.from({ length: 10 }, (_, i) => `<path d="M${i * 40} 0 h40 v26 q-20 14 -40 0 Z" fill="${i % 2 ? '#fff6e6' : '#d8342a'}"/>`).join('');
-  const lanterns = decor.lanterns ? [50, 350].map(x => `<g class="sway" style="transform-origin:${x}px 26px"><line x1="${x}" y1="26" x2="${x}" y2="40" stroke="#5a2c0e" stroke-width="2"/><ellipse cx="${x}" cy="54" rx="13" ry="15" fill="#e3342f" stroke="#a51c18" stroke-width="2"/><rect x="${x - 7}" y="38" width="14" height="4" fill="#ffc21a"/><rect x="${x - 7}" y="67" width="14" height="4" fill="#ffc21a"/></g>`).join('') : '';
-  const sign = decor.sign ? '<rect x="112" y="30" width="176" height="30" rx="8" fill="#3a2419" stroke="#ffc21a" stroke-width="3"/><text x="200" y="51" text-anchor="middle" font-size="16" font-weight="900" fill="#ffc21a" font-family="system-ui">HAWKER RUSH</text>' : '';
-  const neon = decor.neon ? '<text x="200" y="84" text-anchor="middle" font-size="15" font-weight="900" fill="#ff5ad6" font-family="system-ui" class="neon">★ OPEN ★</text>' : '';
+  const stripes = Array.from({ length: 10 }, (_, i) => `<path d="M${i * 40} 0 h40 v24 q-20 16 -40 0 Z" fill="${i % 2 ? '#fff6e6' : '#ff5a5f'}"/>`).join('') +
+    '<rect x="0" y="0" width="400" height="6" fill="#d8342a"/>' +
+    Array.from({ length: 10 }, (_, i) => `<circle cx="${i * 40 + 20}" cy="33" r="2.4" fill="${i % 2 ? '#ffb0b5' : '#fff'}"/>`).join('');
+  const lanterns = decor.lanterns ? [44, 356].map((x, k) => `<g class="sway" style="transform-origin:${x}px 26px;animation-delay:-${k}s"><line x1="${x}" y1="26" x2="${x}" y2="40" stroke="#5a2c0e" stroke-width="2"/><ellipse cx="${x}" cy="54" rx="13" ry="15" fill="#ff4a4a" stroke="#b81c1c" stroke-width="2"/><path d="M${x - 13} 54 h26 M${x} 39 v30" stroke="#ffd23f" stroke-width="1.2" opacity=".7"/><rect x="${x - 7}" y="38" width="14" height="4" rx="1" fill="#ffd23f"/><rect x="${x - 7}" y="67" width="14" height="4" rx="1" fill="#ffd23f"/><path d="M${x} 71 v8" stroke="#ffd23f" stroke-width="2"/></g>`).join('') : '';
+  const sign = decor.sign ? '<g><rect x="108" y="34" width="184" height="30" rx="10" fill="#4a2a1a" stroke="#ffd23f" stroke-width="3"/><text x="200" y="55" text-anchor="middle" font-size="16" font-weight="900" fill="#ffd23f" font-family="system-ui">HAWKER RUSH</text></g>' : '';
+  const neon = decor.neon ? '<text x="200" y="84" text-anchor="middle" font-size="15" font-weight="900" fill="#ff5ad6" stroke="#ffd6f6" stroke-width=".6" font-family="system-ui" class="neon">★ OPEN ★</text>' : '';
   return svg(400, 92, stripes + lanterns + sign + neon, 'stall-top');
+}
+
+/** Behind the customers: the hawker centre (other stalls, hanging lamps, a ceiling fan, a crowd that grows in a rush). */
+export function backdrop() {
+  const stalls = [[0, '#ffe3a3', '#ff9f43'], [140, '#c8f0d8', '#3fb37f'], [280, '#d8e4ff', '#5a7ee0']].map(([x, wall, sign], k) =>
+    `<g><rect x="${x + 6}" y="40" width="128" height="120" rx="8" fill="${wall}" opacity=".75"/>` +
+    `<rect x="${x + 22}" y="48" width="96" height="22" rx="7" fill="${sign}"/>` +
+    `<g fill="#fff" opacity=".9">${[0, 1, 2].map(j => `<circle cx="${x + 44 + j * 26}" cy="59" r="5"/>`).join('')}</g>` +
+    `<rect x="${x + 16}" y="80" width="108" height="10" rx="4" fill="#ffffffaa"/>` +
+    `<g class="steam" stroke="#ffffffcc" stroke-width="2.4" fill="none" stroke-linecap="round" style="animation-delay:-${k * .5}s"><path d="M${x + 50} 104 q-4 -6 0 -12"/><path d="M${x + 90} 104 q-4 -6 0 -12"/></g></g>`).join('');
+  const lamps = [70, 200, 330].map((x, k) => `<g class="sway" style="transform-origin:${x}px 0px;animation-delay:-${k * .8}s"><line x1="${x}" y1="0" x2="${x}" y2="26" stroke="#7a5a40" stroke-width="1.5"/><path d="M${x - 14} 36 Q${x} 18 ${x + 14} 36 Z" fill="#ffcf6b"/><ellipse cx="${x}" cy="38" rx="16" ry="5" fill="#fff3b8" opacity=".55"/></g>`).join('');
+  const fan = '<g transform="translate(200 16)"><g class="spin">' + [0, 120, 240].map(a => `<ellipse cx="0" cy="-15" rx="5" ry="15" fill="#e8d8c0" stroke="#bba58a" transform="rotate(${a})"/>`).join('') + '</g><circle r="5" fill="#bba58a"/></g>';
+  const crowd = [[30, '#ffb3c6'], [95, '#b8e0ff'], [160, '#ffe0a3'], [225, '#c6f0c0'], [290, '#e0c8ff'], [355, '#ffd0b0']].map(([x, c], k) =>
+    `<g class="walker ${k % 2 ? 'rush-only' : ''}" style="animation-delay:-${k * 1.7}s"><circle cx="${x}" cy="128" r="11" fill="${c}"/><path d="M${x - 14} 160 Q${x - 14} 140 ${x} 139 Q${x + 14} 140 ${x + 14} 160 Z" fill="${c}"/></g>`).join('');
+  return svg(400, 160, stalls + crowd + fan + lamps, 'backdrop-art');
 }
