@@ -80,6 +80,7 @@
     </div>
     <p class="hint" id="hint" role="status"></p>
     <div class="kitchen" id="kitchen" aria-label="Kitchen: one row per dish">
+      <div id="stove" class="stove" aria-label="The stove line" hidden></div>
       <div id="lines" class="lines"></div>
     </div>
     <div id="fx" class="fx" aria-hidden="true"></div>
@@ -179,6 +180,14 @@
       <button id="quit" class="link" type="button">Quit this shift</button>
     </div>
   </dialog>
+  <div id="rotate" role="dialog" aria-label="Turn your phone sideways">
+    <div>
+      <span class="phone" aria-hidden="true">📱</span>
+      <p>Turn your phone sideways</p>
+      <small>The whole kitchen fits, stove and all. The shift waits for you.</small>
+      <button id="upright" class="ghost" type="button">Play upright anyway</button>
+    </div>
+  </div>
   <script type="module" src="./app.mjs"></script>
 </body>
 </html>

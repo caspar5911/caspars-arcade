@@ -537,6 +537,28 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 .stock.next, .station.next { border-color: var(--gold) !important; animation: glow 1s ease-in-out infinite alternate; }
 @keyframes glow { from { box-shadow: 0 0 0 1px #ffcc6f66; } to { box-shadow: 0 0 0 3px #ffcc6fcc, 0 0 14px #ffcc6faa; } }
 
+/* ------------------------------------------------ the stove line: see the food cook */
+.stove {
+  display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 5px;
+  padding: 5px; border-radius: 12px;
+  background: linear-gradient(#4a3c34, #2e241f); box-shadow: inset 0 -4px 0 #1b1410;
+}
+.stove .station { min-height: 0; padding: 2px 2px 3px; background: radial-gradient(ellipse at 50% 90%, #6a2f1866, transparent 70%), #2a201b; }
+.stove .station-picture svg { width: 100%; height: clamp(44px, 6.5vh, 80px); }
+.stove .station-name { display: none; }
+.station.needs-flip { border-color: #ffd23f; animation: alarm .3s ease-in-out infinite alternate; }
+.flip-me { animation: hop .5s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.glow { animation: twinkle 1.1s ease-in-out infinite alternate; }
+.sizzle { animation: steam .7s ease-out infinite; }
+.fire-hint { display: grid; place-items: center; padding: 1px; border-radius: 10px; border: 1px dashed #ffb36b88; color: #ffcf9a; font-size: .58rem; font-weight: 800; text-align: center; line-height: 1.1; }
+.line.pastryfam { background: #5a3f12; border-color: #d4a23a; }
+.line.doughfam { background: #4b4030; border-color: #cdb48a; }
+.prep.to-cook { border-color: #ff8a3a; box-shadow: 0 0 0 2px #ff8a3a66; }
+.cook-badge { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); padding: 1px 7px; border-radius: 9px; background: #ff6a2a; color: #fff; font-size: .66rem; font-weight: 900; white-space: nowrap; animation: glow 1s ease-in-out infinite alternate; }
+.prep-art { position: relative; }
+.flying { position: fixed; z-index: 29; width: 52px; height: 52px; pointer-events: none; transition: left .38s ease-in, top .38s cubic-bezier(.3, -.6, .7, 1), transform .38s; }
+.flying svg { width: 100%; height: 100%; }
+
 /* ------------------------------------------------ alive: the hawker centre, Mochi, the bell, little bursts */
 .backdrop { position: absolute; inset: 0; z-index: -2; pointer-events: none; overflow: hidden; }
 .backdrop .backdrop-art { position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; }
@@ -622,4 +644,55 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001s !important; transition-duration: .001s !important; }
   .pop { animation: none !important; transform: translateX(-50%); }
+}
+
+/* ------------------------------------------------ sideways (the main way to play): customers and counter on the left,
+   the stove line and the ingredients on the right */
+@media (orientation: landscape) and (min-aspect-ratio: 5/4) {
+  body.in-shift .hud { max-width: none; padding: max(3px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 3px max(10px, env(safe-area-inset-left)); }
+  body.in-shift .hud .icon { min-width: 40px; min-height: 40px; }
+  body.in-shift .hud-sub { display: none; }
+  #shift {
+    display: grid;
+    width: 100%;
+    max-width: 1280px;
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "top kitchen" "team kitchen" "scene kitchen" "counter kitchen" "hint kitchen";
+    column-gap: 10px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  #shift .topline { grid-area: top; min-height: 26px; padding-bottom: 3px; }
+  #shift #team { grid-area: team; }
+  #shift .scene { grid-area: scene; min-height: 0; }
+  #shift .counter { grid-area: counter; }
+  #shift .hint { grid-area: hint; min-height: 26px; font-size: .78rem; margin: 2px 0 0; }
+  #shift .kitchen { grid-area: kitchen; max-height: none; min-height: 0; height: 100%; overflow-y: auto; justify-content: flex-start; }
+  .portrait { height: clamp(40px, 19vh, 120px); }
+  .order { min-width: 0; }
+  .order span { font-size: .58rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .orders { gap: 1px; }
+  .prep-art { height: clamp(30px, 10vh, 64px); }
+  .stove .station-picture svg { height: clamp(46px, 15vh, 110px); }
+  .line, .line.wide { flex-basis: calc(var(--n) * 36px + 22px); }
+  .line .stock, .line .station { min-height: 44px; }
+  .line .stock svg { height: clamp(22px, 6.5vh, 40px); }
+  .lines.roomy .line .stock { min-height: 64px; }
+  #rotate { display: none !important; }
+}
+@media (orientation: landscape) and (min-aspect-ratio: 5/4) and (max-width: 720px) {
+  #shift { grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr); column-gap: 6px; }
+}
+
+/* held upright during a shift: ask for sideways (it can be waved away) */
+#rotate { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; padding: 24px; background: #1b120ef2; text-align: center; }
+#rotate .phone { display: inline-block; font-size: 3.4rem; animation: turn 1.8s ease-in-out infinite; }
+@keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+#rotate p { margin: 12px 0; font-weight: 800; font-size: 1.1rem; }
+#rotate small { display: block; color: var(--muted); margin-bottom: 14px; }
+@media (orientation: portrait) {
+  body.in-shift:not(.upright) #rotate { display: grid; }
 }

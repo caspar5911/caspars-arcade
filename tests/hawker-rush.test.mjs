@@ -5,14 +5,14 @@ import {
   DISHES, INGREDIENTS, STATIONS, UPGRADES, DECOR, menuFor, newOn, kitchenFor, schedule,
   goals, starsFor, createShift, dishOf, couldBe, placeBase, addIngredient, cook, binBurnt,
   binDish, serve, servingFor, step, progress, speedTime, act, replay, daily, dayKey, speedRun, upgradeCost,
-  WAVES, WALK_IN, EARLY_BONUS, seatsFor, prepFor,
+  WAVES, WALK_IN, EARLY_BONUS, seatsFor, prepFor, readyToCook, cookDish, flip, takeOut,
 } from '../games/hawker-rush/public/engine.mjs';
 
 function advance(s, seconds) {
   for (let i = 0; i < Math.ceil(seconds / TICK); i++) step(s);
 }
 function customers(orders, options = {}) {
-  const s = createShift({ day: 9, seed: 'test', ...options });
+  const s = createShift({ day: DAYS, seed: 'test', ...options });
   s.arrivals = orders.map((order, id) => ({ id, at: 0, who: 'uncle', order, patience: 60 - id * 5 }));
   s.next = 0;
   step(s);
@@ -29,6 +29,17 @@ function build(s, dish) {
       advance(s, STATIONS[station].cook + .2);
     }
     assert.equal(addIngredient(s, ingredient, target), true);
+  }
+  if (recipe.cook) {
+    // built: into the wok / onto the griddle (flip it halfway), then back onto the counter
+    assert.equal(readyToCook(s.prep[target]), dish);
+    assert.equal(cookDish(s, target), true);
+    advance(s, STATIONS[recipe.cook].cook / (STATIONS[recipe.cook].flip ? 2 : 1) + .2);
+    if (STATIONS[recipe.cook].flip) {
+      assert.equal(flip(s, recipe.cook), true);
+      advance(s, STATIONS[recipe.cook].cook / 2 + .2);
+    }
+    assert.equal(takeOut(s, recipe.cook, target), true);
   }
   return target;
 }
@@ -59,10 +70,16 @@ test('seeded schedules are reproducible, bounded and use available dishes', () =
 
 test('every recipe matches exactly in either order; extra and missing ingredients do not', () => {
   for (const [id, recipe] of Object.entries(DISHES)) {
-    assert.equal(dishOf({ base: recipe.base, has: [...recipe.has].reverse() }), id);
-    assert.notEqual(dishOf({ base: recipe.base, has: recipe.has.slice(0, -1) }), id);
-    assert.notEqual(dishOf({ base: recipe.base, has: [...recipe.has, recipe.has[0]] }), id);
+    const cooked = Boolean(recipe.cook);
+    assert.equal(dishOf({ base: recipe.base, has: [...recipe.has].reverse(), cooked }), id);
+    if (recipe.has.length) assert.notEqual(dishOf({ base: recipe.base, has: recipe.has.slice(0, -1), cooked }), id);
+    if (recipe.has.length) assert.notEqual(dishOf({ base: recipe.base, has: [...recipe.has, recipe.has[0]], cooked }), id);
     assert.ok(couldBe({ base: recipe.base, has: recipe.has.slice(0, 1) }).includes(id));
+    // a dish cooked whole isn't finished until it's cooked (and nothing goes into it after)
+    if (cooked) {
+      assert.equal(dishOf({ base: recipe.base, has: recipe.has }), null);
+      assert.equal(readyToCook({ base: recipe.base, has: [...recipe.has].reverse() }), id);
+    }
   }
   assert.equal(dishOf(null), null);
 });
@@ -201,6 +218,34 @@ test('daily uses Singapore dates and standard stall; shop prices increase and ca
   assert.ok(Object.values(DECOR).every(d => d.cost > 0));
 });
 
+test('the wok and the griddle cook a built dish whole; prata must be flipped or it burns', () => {
+  const s = customers([['curryPuff', 'prata']]);
+  // the wok: not until it's built, then in it goes, and out it comes golden
+  assert.equal(placeBase(s, 'pastry', 0), true);
+  assert.equal(addIngredient(s, 'potato', 0), true);
+  assert.equal(cookDish(s, 0), false, 'not built yet');
+  assert.equal(addIngredient(s, 'curry', 0), true);
+  assert.equal(cook(s, 'wok'), false, 'the wok cooks built dishes only');
+  assert.equal(cookDish(s, 0), true);
+  assert.equal(s.prep[0], null);
+  assert.equal(takeOut(s, 'wok'), false, 'still frying');
+  advance(s, STATIONS.wok.cook + .1);
+  assert.equal(takeOut(s, 'wok', 1), true);
+  assert.equal(dishOf(s.prep[1]), 'curryPuff');
+  assert.equal(addIngredient(s, 'curry', 1), false, 'nothing goes into a cooked dish');
+  // the griddle: halfway it waits to be flipped; left too long, it burns
+  assert.equal(placeBase(s, 'dough', 0), true);
+  assert.equal(cookDish(s, 0), true);
+  advance(s, STATIONS.griddle.cook / 2 + .1);
+  assert.equal(s.stations.griddle.slots[0].state, 'flip');
+  assert.equal(takeOut(s, 'griddle'), false, 'flip it first');
+  advance(s, STATIONS.griddle.burn + .1);
+  assert.equal(s.stations.griddle.slots[0].state, 'burnt');
+  assert.equal(flip(s, 'griddle'), false);
+  assert.equal(act(s, 'bin-burnt', 'griddle'), true);
+  assert.equal(act(s, 'flip', 'griddle'), false);
+});
+
 test('a shift comes in waves: busier in the lunch and dinner rushes, someone waiting at opening', () => {
   for (const day of [5, 8, 12]) {
     const people = schedule({ day, seed: 'waves' });
@@ -298,5 +343,5 @@ test('the leaderboard server replays with this exact copy of the rules', async (
   const { createHash } = await import('node:crypto');
   const { readFile } = await import('node:fs/promises');
   const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
-  assert.equal(createHash('sha256').update(text).digest('hex'), '22b35755102271b44f6e2052cd15d66f3da4b3abcc1d5497215d763337ee5491');
+  assert.equal(createHash('sha256').update(text).digest('hex'), 'abbdfa9f95395246df03d90221559209fdac5e9e4abf4f9f950645a0d7563fd3');
 });
