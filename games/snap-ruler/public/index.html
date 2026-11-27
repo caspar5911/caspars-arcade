@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Hold to bend a ruler, release to launch a rolling marble, and climb ten floors.">
+  <meta name="description" content="Hold to bend a ruler, release to launch a rolling marble, and climb 1,000 floors.">
+  <meta name="snap-ruler-build" content="development">
   <title>Snap Ruler · Caspar’s Arcade</title>
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -12,18 +13,22 @@
     <a class="home" href="../../">All games</a>
     <h1>Snap <em>Ruler</em></h1>
     <div class="scoreboard" aria-label="Scores">
-      <div>Floor <strong id="floor">0</strong><span> / 10</span></div>
+      <div>Floor <strong id="floor">0</strong><span> / 1,000</span></div>
       <div>Personal best <strong id="best">0</strong></div>
     </div>
     <div class="stage">
-      <canvas id="board" width="410" height="418" aria-label="Marble and rulers on a ten-floor course"></canvas>
+      <canvas id="board" width="410" height="418" aria-label="Marble and rulers on a 1,000-floor course"></canvas>
     </div>
     <button id="launch" type="button" aria-describedby="help">
       <span class="meter" aria-hidden="true"></span>
       <span id="action">Hold to bend · Release to launch</span>
     </button>
     <p id="help">Use touch, mouse, or Space. Hold longer to go higher. Release farther along the ruler to go farther.</p>
-    <p id="status" role="status">Land on the next ruler, or aim high and skip a floor.</p>
+    <p id="status" role="status">Land on the next ruler, or aim for the marked strip to skip a floor.</p>
+    <div class="climb-tools">
+      <span id="checkpoint">Checkpoint every 25 floors</span>
+      <button id="restart" type="button" hidden>Start from floor 0</button>
+    </div>
   </main>
   <script type="module" src="./app.mjs"></script>
 </body>

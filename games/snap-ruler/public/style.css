@@ -46,3 +46,26 @@ canvas { display: block; width: 100%; aspect-ratio: 410 / 418; touch-action: non
 #launch[data-phase="lost"], #launch[data-phase="won"] { background: var(--mint); border-color: #d8fff1; }
 #help, #status { color: var(--muted); font-size: .89rem; margin: 10px 0 0; }
 #status { color: var(--ink); min-height: 1.25em; }
+.climb-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: .89rem;
+}
+#restart {
+  min-height: 44px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--mint);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: .25em;
+  cursor: pointer;
+}
+#restart:focus-visible { outline: 3px solid var(--mint); outline-offset: 3px; }

@@ -1,5 +1,6 @@
 import { beginHold, cancelHold, createRun, FINAL_FLOOR, finishHold, RULERS, step, TICK, WIDTH } from './engine.mjs';
 import { drawArena, HEIGHT } from './render.mjs';
+import { CHECKPOINT_STEP, checkpointFor, loadProgress, PROGRESS_KEY } from './progress.mjs';
 
 const canvas = document.getElementById('board');
 const launch = document.getElementById('launch');
@@ -8,12 +9,15 @@ const status = document.getElementById('status');
 const floor = document.getElementById('floor');
 const bestScore = document.getElementById('best');
 const context = canvas.getContext('2d');
-const bestKey = 'snap-ruler-best';
+const checkpointText = document.getElementById('checkpoint');
+const restartButton = document.getElementById('restart');
+const format = new Intl.NumberFormat('en');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-let run = createRun();
-let best = readBest();
-let camera = 0;
+let { best, checkpoint } = readProgress();
+let retryFloor = checkpoint;
+let run = createRun(retryFloor);
+let camera = run.y;
 let flash = 0;
 let pointerId = null;
 let spaceDown = false;
@@ -23,34 +27,69 @@ let lastPhase;
 let lastFloor;
 let lastHolding;
 
-function readBest() {
+function readProgress() {
   try {
-    const stored = Number(localStorage.getItem(bestKey));
-    if (Number.isSafeInteger(stored) && stored >= 0 && stored <= FINAL_FLOOR) return stored;
+    return loadProgress(localStorage.getItem(PROGRESS_KEY), localStorage.getItem('snap-ruler-best'));
   } catch {
-    // A private browsing context can disable storage.
+    return { best: 0, checkpoint: 0 };
   }
-  return 0;
+}
+
+function syncProgress() {
+  try {
+    const stored = readProgress();
+    best = Math.max(best, stored.best);
+    checkpoint = Math.max(checkpoint, stored.checkpoint);
+    if (best > stored.best || checkpoint > stored.checkpoint) {
+      localStorage.setItem(PROGRESS_KEY, JSON.stringify({ best, checkpoint }));
+    }
+  } catch {
+    // Keep the score and checkpoint in memory for this session.
+  }
+}
+
+function renderProgress() {
+  bestScore.textContent = format.format(best);
+  checkpointText.textContent = checkpoint > 0
+    ? 'Saved checkpoint ' + format.format(checkpoint)
+    : 'Checkpoint every ' + CHECKPOINT_STEP + ' floors';
+  restartButton.hidden = run.floor === 0 || checkpoint === 0;
 }
 
 function updateScore() {
-  floor.textContent = run.floor;
-  if (run.floor > best) {
-    best = run.floor;
-    try {
-      localStorage.setItem(bestKey, String(best));
-    } catch {
-      // Keep the score in memory for this session.
-    }
-  }
-  bestScore.textContent = best;
+  floor.textContent = format.format(run.floor);
+  const reached = checkpointFor(run.floor);
+  const save = run.floor > best || reached > checkpoint;
+  best = Math.max(best, run.floor);
+  checkpoint = Math.max(checkpoint, reached);
+  retryFloor = Math.max(retryFloor, reached);
+  if (save) syncProgress();
+  renderProgress();
+}
+
+window.addEventListener('storage', event => {
+  if (event.key !== PROGRESS_KEY || event.newValue === null) return;
+  syncProgress();
+  renderProgress();
+});
+
+function missMessage(reason) {
+  if (reason === 'off-tip') return 'The marble rolled off the tip. Release earlier.';
+  if (reason === 'long') return 'Overshot the ruler. Release sooner for a shorter shot.';
+  return 'Came up short. Hold a little longer or release farther along.';
 }
 
 function display() {
   if (run.floor !== lastFloor) {
     if (run.floor > lastFloor) {
       flash = .36;
-      status.textContent = run.floor - lastFloor === 2 ? 'Two floors in one shot.' : 'Floor ' + run.floor + ' reached.';
+      if (checkpointFor(run.floor) > retryFloor && run.floor !== FINAL_FLOOR) {
+        status.textContent = 'Checkpoint reached at floor ' + format.format(checkpointFor(run.floor)) + '.';
+      } else {
+        status.textContent = run.floor - lastFloor === 2
+          ? 'Two floors in one shot.'
+          : 'Floor ' + format.format(run.floor) + ' reached.';
+      }
     }
     updateScore();
   }
@@ -58,24 +97,30 @@ function display() {
     launch.dataset.phase = run.phase;
     switch (run.phase) {
       case 'ready':
-        status.textContent = 'Land on the next ruler, or aim high and skip a floor.';
+        status.textContent = run.floor > 0
+          ? 'Ready at checkpoint ' + format.format(run.floor) + '.'
+          : 'Land on the next ruler, or aim for the marked strip to skip a floor.';
         break;
       case 'lost':
-        status.textContent = run.reason === 'off-tip'
-          ? 'The marble rolled off the tip. Release earlier.'
-          : 'The marble missed the ruler. Try a different hold or release point.';
+        status.textContent = missMessage(run.reason);
         break;
       case 'won':
-        status.textContent = 'Ten floors cleared.';
+        status.textContent = 'Tower cleared. You reached floor ' + format.format(FINAL_FLOOR) + '!';
         break;
     }
   }
   if (run.phase !== lastPhase || run.holding !== lastHolding) {
-    action.textContent = run.phase === 'lost' ? 'Try again'
-    : run.phase === 'won' ? 'Play again'
-    : run.phase === 'flight' ? 'Marble in flight'
-    : run.holding ? 'Release to launch'
-      : 'Hold to bend · Release to launch';
+    if (run.phase === 'lost') {
+      action.textContent = retryFloor > 0 ? 'Retry from floor ' + format.format(retryFloor) : 'Try again';
+    } else if (run.phase === 'won') {
+      action.textContent = 'Start a new climb';
+    } else if (run.phase === 'flight') {
+      action.textContent = 'Marble in flight';
+    } else if (run.phase === 'settling') {
+      action.textContent = 'Marble settling';
+    } else {
+      action.textContent = run.holding ? 'Release to launch' : 'Hold to bend · Release to launch';
+    }
   }
   launch.style.setProperty('--charge', run.charge.toFixed(3));
   lastPhase = run.phase;
@@ -83,16 +128,27 @@ function display() {
   lastHolding = run.holding;
 }
 
+function restart(start) {
+  cancelInput();
+  retryFloor = start;
+  run = createRun(start);
+  camera = run.y;
+  flash = 0;
+  display();
+}
+
 function press() {
   if (run.phase === 'lost' || run.phase === 'won') {
-    run = createRun();
-    camera = 0;
-    flash = 0;
-    display();
+    restart(run.phase === 'won' ? 0 : retryFloor);
     return false;
   }
   return beginHold(run);
 }
+
+restartButton.addEventListener('click', () => {
+  restart(0);
+  launch.focus();
+});
 
 for (const surface of [canvas, launch]) {
   surface.addEventListener('pointerdown', event => {
@@ -118,7 +174,7 @@ launch.addEventListener('click', event => {
 });
 
 window.addEventListener('keydown', event => {
-  if (event.code !== 'Space' || event.target.closest?.('a, input, textarea') ||
+  if (event.code !== 'Space' || event.target.closest?.('a, input, textarea, #restart') ||
       event.ctrlKey || event.altKey || event.metaKey) return;
   event.preventDefault();
   if (event.repeat || pointerId !== null) return;
