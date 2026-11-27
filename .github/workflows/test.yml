@@ -29,7 +29,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -70,4 +70,13 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         if: steps.main-head.outputs.deploy == 'true'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      # (GitHub sometimes can't find the just-uploaded site yet: "No artifacts named github-pages". Wait, try again.)
+      - name: Wait before trying the deploy again
+        if: steps.main-head.outputs.deploy == 'true' && steps.deployment.outcome == 'failure'
+        run: sleep 45
+      - name: Deploy to GitHub Pages (second try)
+        id: deployment-retry
+        if: steps.main-head.outputs.deploy == 'true' && steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
