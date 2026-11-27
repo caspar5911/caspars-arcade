@@ -233,6 +233,7 @@ function buildSeats() {
   const seats = $('seats');
   seats.replaceChildren();
   seats.style.setProperty('--seats', shift.seats.length);
+  seats.classList.toggle('many', shift.seats.length >= 5); // (a busy co-op stall: orders as pictures only)
   return shift.seats.map((_, index) => {
     const el = button('', 'seat empty');
     el.dataset.seat = index;
@@ -551,7 +552,7 @@ function startCoopShift(spec) {
   stopShift();
   result = null;
   pending = {
-    mode: 'day', spec, title: `Co-op · Day ${spec.day}`, day: spec.day, key: null, challenge: null,
+    mode: 'day', spec, title: `Day ${spec.day} 👫`, day: spec.day, key: null, challenge: null,
     coop: { role: room.seat === 0 ? 'host' : 'guest', seat: room.seat, out: [], incoming: [], remote: [],
       upTo: 0, sentAt: 0, sentTicks: -1, heard: performance.now() },
   };
@@ -593,8 +594,11 @@ function coopClosed(reason) {
 }
 
 /** The host plays a friend's tap (and sends it on with the next frame). */
+const OPERANDS = { base: E.BASES, add: E.INGREDIENTS, cook: E.STATIONS, 'bin-burnt': E.STATIONS };
 function remoteAct(m) {
   if (!run?.coop || run.coop.role !== 'host' || shift.phase !== 'running') return;
+  // (only real kitchen things: a name like "constructor" must not reach the rules)
+  if (OPERANDS[m.kind] ? !Object.hasOwn(OPERANDS[m.kind], m.a) : !Number.isInteger(m.a)) return;
   if (!playing()) {
     run.coop.remote.push(m);
     return;
@@ -675,11 +679,13 @@ function renderTeam() {
   const room = Co.current();
   const names = $('teamNames');
   names.replaceChildren();
-  for (const p of room?.players ?? []) {
+  const players = room?.players ?? [];
+  for (const p of players) {
     const chip = document.createElement('span');
-    chip.className = 'chip';
+    chip.className = 'chip' + (p.seat === room.seat ? ' me' : '');
     chip.style.setProperty('--c', Co.COLOURS[p.seat]);
-    chip.textContent = p.name + (p.seat === room.seat ? ' (you)' : '');
+    chip.textContent = players.length > 2 ? p.name.slice(0, 4) : p.name;
+    chip.title = p.name + (p.seat === room.seat ? ' (you)' : '');
     names.append(chip);
   }
 }
