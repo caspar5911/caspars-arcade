@@ -2,28 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#151a22">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="description" content="A one-tap endless climber. The robot never stops: punch through cracked ceilings, chain double smashes, and stay ahead of the flood.">
   <title>Ceiling Punch · Caspar’s Arcade</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <main>
-    <a class="home" href="../../">All games</a>
-    <header>
-      <h1>Ceiling <em>Punch</em></h1>
-      <div class="scoreboard" aria-label="Scores">
-        <span>Floor <strong id="floor">0</strong></span>
-        <span>Personal best <strong id="best">0</strong></span>
-      </div>
-    </header>
-    <div class="stage">
-      <canvas id="board" width="416" height="348" aria-label="Demolition robot running under cracked ceilings, with a flood rising below"></canvas>
+  <canvas id="board" aria-label="Demolition robot running under cracked ceilings, with a flood rising below"></canvas>
+  <div class="hud">
+    <a class="home" href="../../" aria-label="All games">‹</a>
+    <div class="scores" aria-label="Scores">
+      <span>Floor <strong id="floor">0</strong></span>
+      <span>Best <strong id="best">0</strong></span>
     </div>
-    <button id="strike" type="button" aria-describedby="help">Start</button>
-    <p id="status" role="status">The robot never stops. Punch through a crack before the flood catches you.</p>
-    <p id="help">Tap, click, or press Space to punch. Green is a crack, gold breaks two floors, grey concrete ends the run.</p>
-  </main>
+    <button id="sound" class="icon" type="button" aria-label="Sound on" aria-pressed="true"></button>
+    <button id="full" class="icon" type="button" aria-label="Full screen"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+  <section id="overlay" data-show="true">
+    <div class="card">
+      <h1>Ceiling <em>Punch</em></h1>
+      <p id="status" role="status">The robot never stops. Punch through a crack before the flood catches you.</p>
+      <button id="strike" type="button" aria-describedby="help">Start</button>
+      <p id="help">Tap anywhere (or press Space) to punch. Green is a crack, gold breaks two floors, grey concrete ends the run.</p>
+    </div>
+  </section>
   <script type="module" src="./app.mjs"></script>
 </body>
 </html>
