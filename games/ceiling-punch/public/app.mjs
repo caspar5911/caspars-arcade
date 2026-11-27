@@ -1,4 +1,4 @@
-import { createRun, step, tap, TICK, TOP_FLOOR, WIDTH } from './engine.mjs';
+import { createRun, step, tap, TICK, WIDTH } from './engine.mjs';
 import { drawScene, HEIGHT } from './render.mjs';
 
 const board = document.getElementById('board');
@@ -9,7 +9,7 @@ const status = document.getElementById('status');
 const context = board.getContext('2d');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const storageKey = 'ceiling-punch-best';
-const run = createRun();
+const run = createRun(Math.floor(Math.random() * 2 ** 32)); // a new tower each time you play
 let best = readBest();
 let previousFrame;
 let availableTime = 0;
@@ -18,7 +18,7 @@ let previousPhase;
 function readBest() {
   try {
     const value = Number(localStorage.getItem(storageKey));
-    if (Number.isInteger(value) && value >= 0 && value <= TOP_FLOOR) return value;
+    if (Number.isInteger(value) && value >= 0 && value <= 100000) return value;
   } catch {
     // The current run still works in private browsing.
   }
@@ -44,26 +44,24 @@ function updateInterface() {
   strike.dataset.phase = run.phase;
   switch (run.phase) {
     case 'ready':
-      strike.textContent = 'Start run';
-      status.textContent = 'Break through a crack. Gold marks a double smash.';
+      strike.textContent = 'Start';
+      status.textContent = 'The robot never stops. Punch through a crack before the flood catches you.';
       break;
     case 'running':
       strike.textContent = 'Punch';
-      if (previousPhase !== 'smash') status.textContent = 'Line up with a crack, then punch.';
+      if (previousPhase === 'ready' || previousPhase === 'lost') {
+        status.textContent = 'Punch through a crack. Gold breaks two floors and sends the flood back.';
+      }
       break;
     case 'smash':
-      strike.textContent = 'Smash!';
-      status.textContent = run.impact.cleared === 2 ? 'Double smash!' : 'Ceiling cleared.';
+      strike.textContent = 'Punch';
+      status.textContent = run.impact.cleared === 2 ? 'Double smash! The flood falls back.' : 'Smash! Keep climbing.';
       break;
     case 'lost':
       strike.textContent = 'Try again';
-      status.textContent = run.impact.reason === 'passed' ? 'You passed the last crack.'
-        : run.impact.reason === 'early' ? 'Too early. You hit solid concrete before the crack.'
-          : 'Too late. You hit solid concrete after the crack.';
-      break;
-    case 'won':
-      strike.textContent = 'Play again';
-      status.textContent = 'Roof reached. All six floors cleared.';
+      status.textContent = run.impact.reason === 'flooded' ? `The flood caught you on floor ${run.floor}. Punch sooner!`
+        : run.impact.reason === 'early' ? `Too early: solid concrete before the crack. Floor ${run.floor}.`
+          : `Too late: solid concrete after the crack. Floor ${run.floor}.`;
       break;
   }
   previousPhase = run.phase;
@@ -112,7 +110,7 @@ function frame(time) {
       availableTime -= TICK;
     }
     updateInterface();
-    drawScene(context, run, motion.matches);
+    drawScene(context, run, motion.matches, time / 1000);
   } else {
     availableTime = 0;
   }

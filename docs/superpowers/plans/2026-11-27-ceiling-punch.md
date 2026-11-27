@@ -49,3 +49,41 @@ Phases are ready, running, smash, lost and won. An impact is `{x, from, cleared,
 - [ ] Review, open a feature PR, wait for checks, merge and verify the public game URL.
 
 A playtest with new players is the next measure of replay appeal. The release check covers controls, progression and deployment.
+
+## Endless, continuous version (2026-11-27)
+
+Playtest feedback: stopping after every floor and restarting each pass from the wall felt like separate little rounds, not one flowing run. The game is now continuous, like Flappy Bird.
+
+**Rules**
+- The robot never stops. It bounces off the walls instead of losing when it passes the last crack.
+- A punch through a crack climbs a floor. The robot keeps running the same way through the smash, and the camera follows it up.
+- Ceilings are endless. They're generated from a seed, so the same seed makes the same tower, and each new run makes a new one.
+- It gets harder as you climb. Cracks narrow from about 58 to 26 units by ceiling 45, and the robot speeds up from 150 to 265 units per second.
+- Gold spots are placed on purpose on about half the floors and are never thinner than 14 units. There are no accidental slivers.
+- A gold punch breaks two ceilings and sends the flood back to its furthest gap.
+- A flood rises from below at all times. It starts 2 floors down at 0.45 floors per second and speeds up to 1.4 floors per second. It is never more than 2.4 floors behind the robot.
+- Solid concrete still ends the run (too early or too late). The flood reaching the robot's floor also ends it.
+
+**Tuning evidence** comes from a simulation of 1,500 runs per player type, with human timing error and a 0.25 s reaction after landing:
+
+| player | median floor | 90th percentile | median run |
+|---|---|---|---|
+| new (90 ms off) | 11 | 21 | 11 s |
+| casual (60 ms) | 23 | 33 | 21 s |
+| casual, going for gold | 21 | 32 | 19 s |
+| good (35 ms) | 39 | 51 | 34 s |
+| good, going for gold | 37 | 49 | 32 s |
+| expert (20 ms), going for gold | 56 | 79 | 47 s |
+
+Going for gold is a fair gamble, not a trap. Experts are mostly stopped by the flood, and everyone else by their timing.
+
+**Verified**
+- `node --test` passes.
+- In headless Chromium:
+  - the start screen and a phone-width viewport render correctly;
+  - random taps lose to early or late punches;
+  - waiting is ended by the flood;
+  - a scripted player climbed 17 floors with 7 double smashes;
+  - there were no console errors.
+
+**Remaining risk** is the real feel on a phone (tap latency, how hard the flood feels), which needs a playtest with people.
