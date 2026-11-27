@@ -34,11 +34,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Check that this commit is still current
+        id: main-head
+        shell: bash
+        run: |
+          head=$(git ls-remote --exit-code origin refs/heads/main | cut -f1)
+          if [[ "$head" == "$GITHUB_SHA" ]]; then
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/configure-pages@v5
+        if: steps.main-head.outputs.deploy == 'true'
       - run: node scripts/build-pages.mjs "$GITHUB_RUN_NUMBER"
+        if: steps.main-head.outputs.deploy == 'true'
       - uses: actions/upload-pages-artifact@v4
+        if: steps.main-head.outputs.deploy == 'true'
         with:
           path: _site
       - name: Deploy to GitHub Pages
         id: deployment
+        if: steps.main-head.outputs.deploy == 'true'
         uses: actions/deploy-pages@v4
