@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="A one-tap arcade game. Punch through cracked ceilings, chain a double smash, and reach floor six.">
+  <meta name="description" content="A one-tap endless climber. The robot never stops: punch through cracked ceilings, chain double smashes, and stay ahead of the flood.">
   <title>Ceiling Punch · Caspar’s Arcade</title>
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -13,16 +13,16 @@
     <header>
       <h1>Ceiling <em>Punch</em></h1>
       <div class="scoreboard" aria-label="Scores">
-        <span>Floor <strong id="floor">0</strong><span> / 6</span></span>
+        <span>Floor <strong id="floor">0</strong></span>
         <span>Personal best <strong id="best">0</strong></span>
       </div>
     </header>
     <div class="stage">
-      <canvas id="board" width="416" height="348" aria-label="Demolition robot running below two cracked ceilings"></canvas>
+      <canvas id="board" width="416" height="348" aria-label="Demolition robot running under cracked ceilings, with a flood rising below"></canvas>
     </div>
-    <button id="strike" type="button" aria-describedby="help">Start run</button>
-    <p id="status" role="status">Break through a crack. Gold marks a double smash.</p>
-    <p id="help">Tap, click, or press Space to punch. You get one pass under each ceiling.</p>
+    <button id="strike" type="button" aria-describedby="help">Start</button>
+    <p id="status" role="status">The robot never stops. Punch through a crack before the flood catches you.</p>
+    <p id="help">Tap, click, or press Space to punch. Green is a crack, gold breaks two floors, grey concrete ends the run.</p>
   </main>
   <script type="module" src="./app.mjs"></script>
 </body>

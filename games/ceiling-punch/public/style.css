@@ -49,8 +49,7 @@ canvas {
   cursor: pointer;
   touch-action: manipulation;
 }
-#strike[data-phase="lost"], #strike[data-phase="won"] { background: var(--mint); border-color: #d2fff1; }
-#strike[data-phase="smash"] { background: #ede0c7; }
+#strike[data-phase="lost"] { background: var(--mint); border-color: #d2fff1; }
 #strike:focus-visible, .home:focus-visible { outline: 3px solid var(--mint); outline-offset: 3px; }
 #status, #help { margin: 8px 0 0; font-size: .89rem; }
 #help { color: var(--muted); }
