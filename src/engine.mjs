@@ -1,9 +1,102 @@
-export function normalizeRules(rules){if(!Array.isArray(rules)||rules.length>8||rules.some(r=>typeof r!=="string"||! /^(UU|UL|UR|DD|DL|DR|LL|LU|LD|RR|RU|RD)$/.test(r))||new Set(rules).size!==rules.length)throw new Error("Invalid rules");return [...rules].sort();}
+﻿export const LEGACY_BOARD = Object.freeze({
+  id: 'classic', name: 'Classic grid', start: 0, exit: 24, walls: Object.freeze([]),
+});
 
-export function direction(a,b){if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||a>=25||b<0||b>=25)return null;if(b===a-5)return "U";if(b===a+5)return "D";if(b===a-1&&a%5!==0)return "L";if(b===a+1&&a%5!==4)return "R";return null;}
+export function normalizeRules(rules) {
+  if (!Array.isArray(rules) || rules.length > 8 ||
+      rules.some(rule => typeof rule !== 'string' ||
+        !/^(UU|UL|UR|DD|DL|DR|LL|LU|LD|RR|RU|RD)$/.test(rule)) ||
+      new Set(rules).size !== rules.length) {
+    throw new Error('Invalid rules');
+  }
+  return [...rules].sort();
+}
 
-export function checkPath(path,rules,requireWin=true){try{rules=normalizeRules(rules);}catch{return {ok:false,reason:"Invalid rules"};}if(!Array.isArray(path)||path.length<1||path.length>25||path[0]!==0)return {ok:false,reason:"Start at the first cell"};let prev="",seen=new Set([0]);const pairs=[];for(let i=1;i<path.length;i++){const d=direction(path[i-1],path[i]);if(path[i-1]===24)return {ok:false,reason:"The exit ends the run"};if(!d)return {ok:false,reason:"Move to an adjacent cell"};if(seen.has(path[i]))return {ok:false,reason:"Cannot revisit a cell"};if(prev){const pair=prev+d;if(rules.includes(pair))return {ok:false,reason:"Forbidden pair: "+pair};pairs.push(pair);}seen.add(path[i]);prev=d;}if(requireWin&&path.at(-1)!==24)return {ok:false,reason:"Reach the exit first"};return {ok:true,pairs};}
+export function direction(from, to) {
+  if (!Number.isInteger(from) || !Number.isInteger(to) ||
+      from < 0 || from >= 25 || to < 0 || to >= 25) return null;
+  if (to === from - 5) return 'U';
+  if (to === from + 5) return 'D';
+  if (to === from - 1 && from % 5 !== 0) return 'L';
+  if (to === from + 1 && from % 5 !== 4) return 'R';
+  return null;
+}
 
-export function solve(rules,budget=100000){rules=normalizeRules(rules);if(!Number.isSafeInteger(budget)||budget<0)throw new Error("Invalid budget");let steps=0,unknown=false;const bans=new Set(rules),path=[0];function dfs(cell,prev,mask){if(steps>=budget){unknown=true;return null;}steps++;if(cell===24)return [...path];for(const n of [cell+1,cell+5,cell-1,cell-5]){const d=direction(cell,n);if(!d||(mask&(1<<n))||(prev&&bans.has(prev+d)))continue;path.push(n);const answer=dfs(n,d,mask|(1<<n));path.pop();if(answer)return answer;if(unknown)return null;}return null;}const witness=dfs(0,"",1);return {status:witness?"solved":unknown?"unknown":"unsolvable",witness,steps};}
+export function checkPath(path, rules, requireWin = true, board = LEGACY_BOARD) {
+  try {
+    rules = normalizeRules(rules);
+  } catch {
+    return { ok: false, reason: 'Invalid rules' };
+  }
+  if (!Array.isArray(path) || !path.length || path.length > 25 || path[0] !== board.start) {
+    return { ok: false, reason: 'Begin on the start tile.' };
+  }
 
-export function candidates(path,rules,budget=100000){rules=normalizeRules(rules);const win=checkPath(path,rules);if(!win.ok)throw new Error(win.reason);if(rules.length>=8)return [];return [...new Set(win.pairs)].sort().map(rule=>{const next=normalizeRules([...rules,rule]);const result=solve(next,budget);return {rule,status:result.status,witness:result.witness};});}
+  let previous = '';
+  const seen = new Set([board.start]);
+  const pairs = [];
+  for (let i = 1; i < path.length; i++) {
+    const from = path[i - 1];
+    const to = path[i];
+    const move = direction(from, to);
+    if (from === board.exit) return { ok: false, reason: 'The exit ends the run.' };
+    if (!move) return { ok: false, reason: 'Move to a neighboring tile.' };
+    if (board.walls.includes(to)) return { ok: false, reason: 'That tile is a wall.' };
+    if (seen.has(to)) return { ok: false, reason: 'You already used that tile.' };
+    if (previous) {
+      const pair = previous + move;
+      if (rules.includes(pair)) {
+        return { ok: false, pair, tiles: path.slice(i - 2, i + 1) };
+      }
+      pairs.push(pair);
+    }
+    seen.add(to);
+    previous = move;
+  }
+  if (requireWin && path.at(-1) !== board.exit) {
+    return { ok: false, reason: 'Reach the exit first.' };
+  }
+  return { ok: true, pairs };
+}
+
+export function solve(rules, budget = 100000, board = LEGACY_BOARD) {
+  const bans = new Set(normalizeRules(rules));
+  if (!Number.isSafeInteger(budget) || budget < 0) throw new Error('Invalid budget');
+  const walls = board.walls.reduce((mask, cell) => mask | (1 << cell), 0);
+  const path = [board.start];
+  let steps = 0;
+  let unknown = false;
+
+  function search(cell, previous, visited) {
+    if (steps >= budget) {
+      unknown = true;
+      return null;
+    }
+    steps++;
+    if (cell === board.exit) return [...path];
+
+    for (const next of [cell + 1, cell + 5, cell - 1, cell - 5]) {
+      const move = direction(cell, next);
+      if (!move || (visited & (1 << next)) || (previous && bans.has(previous + move))) continue;
+      path.push(next);
+      const witness = search(next, move, visited | (1 << next));
+      path.pop();
+      if (witness || unknown) return witness;
+    }
+    return null;
+  }
+
+  const witness = search(board.start, '', walls | (1 << board.start));
+  return { status: witness ? 'solved' : unknown ? 'unknown' : 'unsolvable', witness, steps };
+}
+
+export function candidates(path, rules, budget = 100000, board = LEGACY_BOARD) {
+  const win = checkPath(path, rules, true, board);
+  if (!win.ok) throw new Error(win.reason ?? 'The path uses a forbidden turn.');
+  if (rules.length >= 8) return [];
+
+  return [...new Set(win.pairs)].sort().map(rule => {
+    const { status, witness } = solve([...rules, rule], budget, board);
+    return { rule, status, witness };
+  });
+}
