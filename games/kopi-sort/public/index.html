@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="kopi-sort-build" content="development">
+  <meta name="theme-color" content="#2a1d16">
+  <meta name="description" content="Kopi Sort: the kopi uncle's trays got mixed up. Pour cups between trays until each holds one drink. 20 levels and a daily tray.">
+  <title>Kopi Sort · Caspar’s Arcade</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="hud">
+    <a class="icon" id="home" href="../../" aria-label="All games">‹</a>
+    <div class="title"><span id="where">Kopi Sort</span><span id="moves" class="moves"></span></div>
+    <button id="sound" class="icon" type="button" aria-label="Sound on"></button>
+  </div>
+
+  <!-- the menu: today's tray and the levels -->
+  <main id="menu">
+    <h1>Kopi <em>Sort</em></h1>
+    <p class="intro">Uncle mixed up the drinks! Tap a tray, then tap where to pour. Make every tray one drink.</p>
+    <button id="dailyCard" class="daily" type="button">
+      <span class="daily-label">☕ Today’s tray</span>
+      <span id="dailyInfo" class="daily-info">Same puzzle for everyone today</span>
+    </button>
+    <p id="streak" class="streak"></p>
+    <h2>Levels</h2>
+    <div id="levels" class="levels"></div>
+  </main>
+
+  <!-- playing -->
+  <section id="play" hidden>
+    <div id="board" class="board" role="group" aria-label="Trays"></div>
+    <p id="hint" class="hint" role="status"></p>
+    <div class="bar">
+      <button id="undo" type="button">↶ Undo</button>
+      <button id="restart" type="button">⟲ Restart</button>
+      <button id="toMenu" type="button">☰ Levels</button>
+    </div>
+  </section>
+
+  <!-- solved -->
+  <section id="win" hidden>
+    <div class="card">
+      <p class="win-title" id="winTitle">Tray sorted!</p>
+      <p class="win-stars" id="winStars" aria-live="polite"></p>
+      <p class="win-moves" id="winMoves"></p>
+      <button id="next" class="primary" type="button">Next level</button>
+      <button id="share" class="secondary" type="button" hidden>Share result</button>
+      <button id="winMenu" class="link" type="button">Back to levels</button>
+    </div>
+  </section>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
