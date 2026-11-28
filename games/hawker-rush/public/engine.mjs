@@ -89,9 +89,9 @@ export const PEOPLE = [
 
 export const UPGRADES = {
   prep: { name: 'Bigger counter', what: 'One more spot to build dishes on', costs: [120] },
-  fast: { name: 'Faster stoves', what: 'Toast, eggs and satay cook 15% faster', costs: [80, 260, 520] },
+  fast: { name: 'Faster stoves', what: 'Everything on the stove line cooks 15% faster (wok and griddle too)', costs: [80, 260, 520] },
   timer: { name: 'Kitchen timer', what: 'Food takes 2 s longer to burn', costs: [60, 200] },
-  slots: { name: 'Extra burners', what: 'Toaster, pot and grill cook one more at once', costs: [180, 520] },
+  slots: { name: 'Extra burners', what: 'Every grill, pot, wok and griddle cooks one more at once', costs: [180, 520] },
   fan: { name: 'Standing fan', what: 'Customers wait 12% longer', costs: [90, 320, 640] },
   tipjar: { name: 'Tip jar', what: 'Tips are 20% bigger', costs: [110, 400] },
 };
