@@ -343,7 +343,7 @@ test('the leaderboard server replays with this exact copy of the rules', async (
   const { createHash } = await import('node:crypto');
   const { readFile } = await import('node:fs/promises');
   const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
-  assert.equal(createHash('sha256').update(text).digest('hex'), 'e777534907c4947b8d5a1e572bb04fe36a6f845afe9841d98757363b2b600a43');
+  assert.equal(createHash('sha256').update(text).digest('hex'), '7dfbebd96cde7dd55d9771f96e7a3b5be98815c9d52f796a19ecd81f53911fb1');
 });
 
 test('a phone showing an old copy moves to a newer release (and only a newer one)', async () => {
@@ -424,4 +424,64 @@ test('the daily gift: once a day, growing with a streak of days in a row', async
   assert.equal(claimGift({ last: '2026-11-30', streak: 6 }, '2026-12-01').amount, GIFTS[6]); // (across months)
   assert.equal(claimGift({ last: '2026-12-01', streak: 7 }, '2026-12-02').amount, GIFTS[0]); // (a new week)
   assert.equal(claimGift({ last: '2026-11-26', streak: 5 }, '2026-11-28').streak, 1); // (missed a day)
+});
+
+test('Fever time: every 5th serve in a row doubles tips for a few seconds; someone storming off ends it', async () => {
+  const { FEVER_EVERY, FEVER_TIME } = await import('../games/hawker-rush/public/engine.mjs');
+  const s = customers(Array.from({ length: 8 }, () => ['kopi']), { mode: 'day' });
+  s.arrivals.forEach(p => { p.patience = 400; });
+  const paid = [];
+  for (let k = 0; k < 7; k++) {
+    while (!s.seats.some(c => c && !c.leaving)) step(s);
+    const seat = s.seats.findIndex(c => c && !c.leaving);
+    build(s, 'kopi');
+    const before = s.coins;
+    assert.equal(serve(s, s.prep.findIndex(Boolean), seat), true);
+    paid.push({ amount: s.coins - before, fever: s.events.filter(e => e.type === 'paid').pop().fever });
+    s.events.length = 0;
+    if (k === FEVER_EVERY - 1) assert.ok(s.feverUntil > s.t && s.fevers === 1, 'fever starts on the 5th in a row');
+  }
+  assert.equal(paid.slice(0, FEVER_EVERY).some(p => p.fever), false);
+  assert.ok(paid[FEVER_EVERY].fever, 'the next serve is a fever serve');
+  // a customer storming off ends it
+  s.feverUntil = s.t + FEVER_TIME;
+  const waiting = s.seats.findIndex(c => c && !c.leaving);
+  if (waiting >= 0) {
+    s.seats[waiting].left = TICK / 2;
+    step(s);
+    assert.ok(s.feverUntil <= s.t && s.events.some(e => e.type === 'fever-end'));
+  }
+});
+
+test('special customers: critics, big groups and regulars (never in a speed run), the same for everyone', async () => {
+  const { REGULARS, CRITIC_FINE } = await import('../games/hawker-rush/public/engine.mjs');
+  const kinds = {}, regularIds = new Set();
+  for (let k = 0; k < 30; k++) {
+    const people = schedule({ day: 12, seed: 'sp' + k });
+    assert.deepEqual(people, schedule({ day: 12, seed: 'sp' + k })); // (deterministic)
+    const today = people.filter(p => p.regular).map(p => p.regular);
+    assert.equal(new Set(today).size, today.length, 'a regular comes once a shift');
+    for (const p of people) {
+      if (p.kind) kinds[p.kind] = (kinds[p.kind] ?? 0) + 1;
+      if (p.kind === 'group') assert.ok(p.order.length >= 3);
+      if (p.kind === 'regular') {
+        const r = REGULARS.find(x => x.id === p.regular);
+        assert.equal(p.order[0], r.fav);
+        assert.equal(p.who, r.who);
+        regularIds.add(r.id);
+      }
+    }
+  }
+  assert.ok(kinds.critic > 0 && kinds.group > 0 && kinds.regular > 0, JSON.stringify(kinds));
+  assert.ok(regularIds.size >= 4);
+  for (let k = 0; k < 5; k++) assert.ok(schedule({ mode: 'speed', seed: 'sp' + k }).every(p => !p.kind));
+  assert.ok(schedule({ day: 1, seed: 'x' }).every(p => !p.kind)); // (day 1 is just kopi)
+  // a critic who storms off costs a little (never below nothing)
+  const s = customers([['kopi']]);
+  s.seats[0].kind = 'critic';
+  s.coins = 3;
+  s.seats[0].left = TICK / 2;
+  step(s);
+  assert.equal(s.coins, 0);
+  assert.ok(s.events.some(e => e.type === 'angry' && e.review === 'bad' && e.fine === 3 && e.fine <= CRITIC_FINE));
 });

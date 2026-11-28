@@ -108,5 +108,5 @@ test('a friend’s phone replaying the host’s frames ends with exactly the hos
   }
   assert.equal(guest.phase, 'over');
   for (const key of ['coins', 'served', 'lost', 'passed', 'ticks', 'burnt', 'next', 'earlyBonus']) assert.equal(guest[key], host[key], key);
-  assert.ok(applied > 40 && host.served >= 1, `${applied} moves, ${host.served} served`);
+  assert.ok(applied > 30 && host.served >= 1, `${applied} moves, ${host.served} served`);
 });

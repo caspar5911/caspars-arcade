@@ -301,6 +301,31 @@ export function station(id, slots, { fast = 0 } = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------- customers
+/**
+ * A customer as they sit at the counter: their face, plus what makes them special (the food critic's beret and
+ * notepad, the friends of a big group behind them, a regular's heart badge).
+ */
+export function customer(c, mood = 'ok') {
+  const face = person(c.who, mood);
+  if (c.kind === 'critic') {
+    return face.replace(/<\/svg>$/, '<g class="critic-kit"><ellipse cx="40" cy="20" rx="23" ry="7.5" fill="#3a2a4a"/><circle cx="40" cy="13" r="3" fill="#3a2a4a"/>' +
+      '<g transform="rotate(-8 64 74)"><rect x="57" y="62" width="15" height="20" rx="2" fill="#fffdf4" stroke="#8a7a6a" stroke-width="1.4"/>' +
+      '<path d="M60 68 h9 M60 72 h9 M60 76 h6" stroke="#9a8a7a" stroke-width="1.2"/></g>' +
+      '<path d="M50 84 l16 -14" stroke="#e8b04a" stroke-width="3" stroke-linecap="round"/></g></svg>');
+  }
+  if (c.kind === 'group') {
+    const pal = ['#ffb3c6', '#b8e0ff'];
+    const friend = (x, k) => `<g opacity=".95"><path d="M${x - 13} 100 Q${x - 13} 76 ${x} 75 Q${x + 13} 76 ${x + 13} 100 Z" fill="${pal[k]}"/>` +
+      `<circle cx="${x}" cy="62" r="12" fill="#f2c9a5"/><path d="M${x - 12} 58 Q${x} 44 ${x + 12} 58 Z" fill="#3a2a22"/>` +
+      `<circle cx="${x - 4}" cy="63" r="1.6" fill="#2b1a10"/><circle cx="${x + 4}" cy="63" r="1.6" fill="#2b1a10"/></g>`;
+    return face.replace(/(<svg[^>]*>)/, `$1${friend(9, 0)}${friend(71, 1)}`);
+  }
+  if (c.kind === 'regular') {
+    return face.replace(/<\/svg>$/, '<g class="heart-up" style="animation-duration:2.4s"><path d="M66 22 c-4 -6 -12 -2 -8 4 l8 7 l8 -7 c4 -6 -4 -10 -8 -4 Z" fill="#ff5a7a" stroke="#fff" stroke-width="1.4"/></g></svg>');
+  }
+  return face;
+}
+
 // Round, big-headed and blinking. Each kind of customer has their own look; moods show on the face.
 const LOOKS = {
   uncle: { skin: '#f0c49a', hair: '#e8e8e8', shirt: '#f4f4f4', trim: '#9ad0f5', style: 'bald' },

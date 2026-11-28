@@ -1,12 +1,16 @@
-// Hawker Rush (v4): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
+// Hawker Rush (v5): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
 // step: a cup, then kopi, then condensed milk; a plate, then toast from the toaster (it burns!), kaya and butter...
 // then serve it to the customer. Some dishes are built first and then cooked whole: a curry puff (pastry, potato,
 // curry) goes into the wok to fry; roti prata goes on the griddle, and must be flipped halfway.
-// Quick service earns tips; serving in a row builds a combo.
+// Quick service earns tips; serving in a row builds a combo, and every 5th serve in a row starts Fever time (double
+// tips for a few seconds). Now and then someone special comes: a food critic (serve them quickly for a glowing review,
+// or lose a little if they storm off), a big group (three dishes, a big tip), or one of the regulars, who always
+// order their favourite.
 // A shift comes in waves (a quiet open, the lunch rush, a breather, the dinner rush). A free seat never sits empty for
 // long: the next customer due soon walks straight in, so quick players get busier, and can close early for a bonus.
 // Deterministic: a seed and the list of actions replay exactly (for checked leaderboards).
 
+export const RULES = 5; // the rules version: the leaderboard server (ENGINE) and every phone in a co-op stall must agree
 export const TICK = 1 / 30;
 export const SEATS = 4;
 export const QUEUE_MAX = 5;
@@ -17,6 +21,18 @@ export const MAX_PLAYERS = 4; // co-op: friends sharing one stall
 // the waves of a shift: [from second, busyness] (busyness: customers per second, relative)
 export const WAVES = [[0, .9, 'open'], [20, 1.9, 'lunch'], [55, .7, 'breather'], [70, 1.6, 'dinner'], [SHIFT - 20, 0, 'closing']];
 export const WALK_IN = 15; // a free seat (and nobody queuing): the next customer due within this many seconds sits down
+export const FEVER_EVERY = 5; // every 5th customer served in a row starts Fever time…
+export const FEVER_TIME = 8; // …for this many seconds: tips are doubled (a customer storming off ends it)
+export const CRITIC_FINE = 5; // a food critic who storms off writes a bad review: this much off the takings
+// the regulars: the same faces come back, day after day, for their favourite
+export const REGULARS = [
+  { id: 'huat', name: 'Uncle Huat', who: 'uncle', fav: 'kopi' },
+  { id: 'meiling', name: 'Mei Ling', who: 'student', fav: 'teh' },
+  { id: 'lily', name: 'Little Lily', who: 'kid', fav: 'toast' },
+  { id: 'siti', name: 'Kak Siti', who: 'auntie', fav: 'curryPuff' },
+  { id: 'rajan', name: 'Mr Rajan', who: 'office', fav: 'prata' },
+  { id: 'boon', name: 'Boon the builder', who: 'worker', fav: 'rice' },
+];
 export const EARLY_BONUS = .15; // closing early: up to this much per second left on the clock (all served)
 
 // ---------------------------------------------------------------------------------------------------- the kitchen
@@ -203,6 +219,7 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
   if (times) times[0] = 1.5; // (someone is always waiting when the stall opens)
   const hard = speed ? .2 : Math.min(.3, day * .018);
   const people = [];
+  const regularsToday = new Set();
   let at = 1.5;
   for (let i = 0; i < count; i++) {
     if (speed) {
@@ -213,10 +230,28 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
     for (let k = 0; k <= big; k++) {
       order.push(fresh.length && rng() < .35 ? fresh[Math.floor(rng() * fresh.length)] : menu[Math.floor(rng() * menu.length)]);
     }
-    const who = PEOPLE[Math.floor(rng() * PEOPLE.length)];
+    let who = PEOPLE[Math.floor(rng() * PEOPLE.length)];
+    // someone special? (story and daily shifts: a speed run is the same plain line for everyone)
+    let kind = null, regular = null;
+    if (!speed) {
+      const roll = rng();
+      const regulars = REGULARS.filter(r => menu.includes(r.fav) && !regularsToday.has(r.id));
+      if (day >= 4 && roll < .05) kind = 'critic';
+      else if (day >= 3 && roll < .11) {
+        kind = 'group';
+        while (order.length < 3) order.push(menu[Math.floor(rng() * menu.length)]);
+      } else if (day >= 2 && roll < .22 && regulars.length) {
+        kind = 'regular';
+        regular = regulars[Math.floor(rng() * regulars.length)];
+        regularsToday.add(regular.id);
+        order[0] = regular.fav;
+        who = PEOPLE.find(p => p.id === regular.who);
+      }
+    }
     const work = order.reduce((n, d) => n + steps(d), 0);
-    const patience = (16 + 4 * work) * who.patience * (1 - hard) * (1 + .12 * (upgrades.fan ?? 0));
-    people.push({ id: i, at: round2(at), who: who.id, order, patience: round2(patience) });
+    const mood = kind === 'critic' ? .75 : kind === 'group' ? 1.35 : 1;
+    const patience = (16 + 4 * work) * who.patience * mood * (1 - hard) * (1 + .12 * (upgrades.fan ?? 0));
+    people.push({ id: i, at: round2(at), who: who.id, order, patience: round2(patience), ...(kind ? { kind } : {}), ...(regular ? { regular: regular.id } : {}) });
   }
   return people.sort((a, b) => a.at - b.at || a.id - b.id);
 }
@@ -251,7 +286,7 @@ export function createShift(spec = {}) {
     prep: Array.from({ length: prepFor(players, upgrades) }, () => null),
     stations,
     coins: 0, tips: 0, served: 0, dishes: 0, lost: 0, passed: 0, burnt: 0, wasted: 0, combo: 0, bestCombo: 0,
-    early: 0, earlyBonus: 0,
+    early: 0, earlyBonus: 0, feverUntil: 0, fevers: 0, reviews: 0,
     goal: goals(people),
     events: [],
   };
@@ -481,9 +516,13 @@ function pay(shift, seat) {
   const c = shift.seats[seat];
   const base = c.order.reduce((s, d) => s + DISHES[d].price, 0);
   const quick = Math.max(0, c.left / c.patience);
-  const tip = base * .6 * quick * (1 + .2 * (shift.upgrades.tipjar ?? 0));
+  const fever = shift.t < shift.feverUntil;
+  const tip = base * .6 * quick * (1 + .2 * (shift.upgrades.tipjar ?? 0)) *
+    (c.kind === 'group' ? 1.5 : c.kind === 'regular' ? 1.25 : 1) * (fever ? 2 : 1);
+  // the food critic: served quickly, a glowing review (worth the dishes' price again)
+  const review = c.kind === 'critic' ? (quick > .5 ? 'great' : 'fine') : null;
   const combo = 1 + Math.min(.5, shift.combo * .1);
-  const amount = round2((base + tip) * combo);
+  const amount = round2((base + tip + (review === 'great' ? base : 0)) * combo);
   shift.coins = round2(shift.coins + amount);
   shift.tips = round2(shift.tips + amount - base);
   shift.served++;
@@ -491,7 +530,14 @@ function pay(shift, seat) {
   shift.bestCombo = Math.max(shift.bestCombo, shift.combo);
   c.leaving = 'happy';
   c.leaveAt = shift.t + 1.2; // (a moment to eat and smile)
-  shift.events.push({ type: 'paid', seat, amount, combo: shift.combo, perfect: quick > .6 });
+  if (review === 'great') shift.reviews++;
+  shift.events.push({ type: 'paid', seat, amount, combo: shift.combo, perfect: quick > .6, fever,
+    ...(c.kind ? { kind: c.kind } : {}), ...(c.regular ? { regular: c.regular } : {}), ...(review ? { review } : {}) });
+  if (shift.combo % FEVER_EVERY === 0) {
+    shift.feverUntil = round2(shift.t + FEVER_TIME);
+    shift.fevers++;
+    shift.events.push({ type: 'fever', until: shift.feverUntil });
+  }
 }
 
 function seatSomeone(shift, person) {
@@ -538,7 +584,13 @@ export function step(shift) {
       c.leaveAt = shift.t + 1;
       shift.lost++;
       shift.combo = 0;
-      shift.events.push({ type: 'angry', seat: i });
+      if (shift.feverUntil > shift.t) {
+        shift.feverUntil = shift.t;
+        shift.events.push({ type: 'fever-end' });
+      }
+      const fine = c.kind === 'critic' ? Math.min(CRITIC_FINE, shift.coins) : 0;
+      shift.coins = round2(shift.coins - fine);
+      shift.events.push({ type: 'angry', seat: i, ...(fine ? { review: 'bad', fine } : {}) });
     }
   });
   while (shift.queue.length && shift.seats.includes(null)) seatSomeone(shift, shift.queue.shift());

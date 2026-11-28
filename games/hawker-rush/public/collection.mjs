@@ -2,6 +2,7 @@
 // customer you've served, and achievements. Each step pays a little into the wallet (small next to a shift's pay).
 export const MASTERY = [{ at: 10, name: 'Bronze', pay: 5 }, { at: 30, name: 'Silver', pay: 10 }, { at: 75, name: 'Gold', pay: 20 }];
 export const STICKER_GOLD = 20;
+export const REGULAR_HEARTS = 10; // a regular's heart meter: one heart for every visit you serve them
 
 export const ACHIEVEMENTS = [
   { id: 'first', name: 'First customer', what: 'Serve your first customer', pay: 5 },
@@ -18,6 +19,10 @@ export const ACHIEVEMENTS = [
   { id: 'allDays', name: 'Hawker master', what: 'Clear all 15 story days', pay: 50 },
   { id: 'gift7', name: 'Every day', what: 'Open the daily gift 7 days in a row', pay: 20 },
   { id: 'album', name: 'Know your customers', what: 'Serve every kind of customer', pay: 15 },
+  { id: 'fever', name: 'Fever time!', what: 'Serve 5 in a row to start Fever', pay: 10 },
+  { id: 'critic', name: 'Five stars', what: 'Win a glowing review from the food critic', pay: 20 },
+  { id: 'family', name: 'Like family', what: 'Get 5 hearts with a regular', pay: 25 },
+  { id: 'allRegulars', name: 'Everybody knows you', what: 'Meet all six regulars', pay: 30 },
 ];
 
 export const masteryOf = n => MASTERY.filter(t => n >= t.at).length; // (0 none, 1 bronze, 2 silver, 3 gold)

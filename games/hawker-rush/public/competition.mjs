@@ -1,6 +1,6 @@
-import { FIRST_DAILY, daily, dayKey, speedRun } from './engine.mjs';
+import { FIRST_DAILY, RULES, daily, dayKey, speedRun } from './engine.mjs';
 
-const engine = 4; // the rules version (server/hh/hawker_rush.py ENGINE)
+const engine = RULES; // the rules version (server/hh/hawker_rush.py ENGINE must match)
 const challengeFormat = /^hr2\.(daily|speed)\.(\d{4}-\d{2}-\d{2})\.(0|[1-9]\d*)$/;
 const boardPath = '/ai/arcade/hawker-rush/';
 let connection;
