@@ -90,9 +90,20 @@ function button(label, className = '') {
   return el;
 }
 
+const BACK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12"/></svg>';
+const ARCADE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>';
+
 function show(next, title, subtitle = '') {
   page = next;
   for (const id of pages) $(id).hidden = id !== next;
+  // ← steps back inside the game; only the home page's button (a grid, not an arrow) leads out to all the games
+  const out = next === 'home';
+  if ($('back').dataset.out !== String(out)) {
+    $('back').dataset.out = String(out);
+    $('back').innerHTML = out ? ARCADE_ICON : BACK_ICON;
+    $('back').setAttribute('aria-label', out ? 'All games' : 'Back');
+  }
+  syncHistory();
   document.body.classList.toggle('in-shift', next === 'shift');
   $('pause').hidden = next !== 'shift';
   $('hudTitle').textContent = title;
@@ -783,6 +794,28 @@ function finishCoop() {
   setText($('shareNote'), '');
   openDialog('results');
 }
+
+// ⬅ the phone's own back (gesture or button) does the same as ←: while inside the game, one extra history entry
+// catches it, so it steps back a page (or pauses the shift) instead of leaving the game
+let leavingByCode = false;
+function syncHistory() {
+  const inside = page !== 'home';
+  if (inside && history.state?.hawker !== 'in') history.pushState({ hawker: 'in' }, '');
+  else if (!inside && history.state?.hawker === 'in') {
+    leavingByCode = true;
+    history.back();
+  }
+}
+addEventListener('popstate', () => {
+  if (leavingByCode) {
+    leavingByCode = false;
+    if (page !== 'home') history.pushState({ hawker: 'in' }, ''); // (went back inside meanwhile)
+    return;
+  }
+  if (page === 'home') return;
+  stepBack();
+  if (page !== 'home') history.pushState({ hawker: 'in' }, '');
+});
 
 // 📱 upright or sideways: the player picks (upright unless they choose sideways). Full screen holds the phone that way
 // where the browser allows it; sideways players holding the phone upright get a "turn your phone" card.
@@ -1677,6 +1710,22 @@ $('shopBack').addEventListener('click', () => {
   }
 });
 $('pause').addEventListener('click', pause);
+
+/** One step back inside the game: a page goes back the way its own Back button does; a shift pauses (quit from there). */
+function stepBack() {
+  if (page === 'shift') {
+    if (shift?.phase === 'running') pause();
+    else if (!$('results').open) home();
+    return;
+  }
+  const backs = { intro: 'introBack', shop: 'shopBack', boards: 'boardsBack', coop: 'coopBack' };
+  if (backs[page]) $(backs[page]).click();
+}
+$('back').addEventListener('click', event => {
+  if (page === 'home') return; // (out to all the games)
+  event.preventDefault();
+  stepBack();
+});
 $('resume').addEventListener('click', () => closeDialog('paused'));
 $('quit').addEventListener('click', () => home());
 $('book').addEventListener('click', openBook);
