@@ -355,3 +355,20 @@ test('a phone showing an old copy moves to a newer release (and only a newer one
   assert.equal(newerBuild('104', {}), null);
   assert.equal(updateUrl('https://x.test/games/hawker-rush/?room=ABCDE', 107), 'https://x.test/games/hawker-rush/?room=ABCDE&v=107');
 });
+
+test('helping friends clear a day saves it; the next day opens once every day before it is cleared', async () => {
+  const { clearDay, canPlay } = await import('../games/hawker-rush/public/progress.mjs');
+  const save = { day: 2, best: { 1: 3 } };
+  assert.equal(clearDay(save, 8, 2), null); // (with friends, ahead of my own progress)
+  assert.equal(save.best[8], 2);
+  assert.equal(save.day, 2);
+  assert.ok(canPlay(save, 8) && !canPlay(save, 9) && !canPlay(save, 5));
+  for (const day of [2, 3, 4, 5, 6]) clearDay(save, day, 1);
+  assert.equal(save.day, 7);
+  assert.equal(clearDay(save, 7, 3), 9); // (clearing day 7 skips the day 8 already cleared)
+  assert.ok(canPlay(save, 9) && !canPlay(save, 10));
+  assert.equal(clearDay(save, 8, 1), null); // (a worse go keeps the best stars)
+  assert.equal(save.best[8], 2);
+  assert.equal(clearDay(save, 9, 0), null); // (no stars: not cleared)
+  assert.equal(save.day, 9);
+});
