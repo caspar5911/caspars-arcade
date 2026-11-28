@@ -1087,3 +1087,11 @@ body.in-shift .hud-sub { display: none; }
 .mission-bar i { display: block; height: 100%; background: #3f9a5a; }
 .missions li.done .mission-text { opacity: .7; }
 .today-card .note { margin: 6px 0 0; text-align: center; }
+
+/* ------------------------------------------------ the account */
+.account-tile { width: 100%; min-height: 50px; margin: 8px 0 2px; padding-block: 5px; }
+.account-form .field { margin-bottom: 4px; }
+.account-who { margin: 8px 0 2px; font-size: 1.05rem; font-weight: 800; }
+#accountIn .field { margin: 6px 0; }
+.ghost.danger { border-color: var(--red); color: var(--red); }
+#pickSave .big, #pickSave .ghost { white-space: normal; line-height: 1.25; }

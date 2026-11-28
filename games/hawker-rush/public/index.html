@@ -55,6 +55,7 @@
       <p class="intro">Brew kopi, toast kaya bread and serve the lunch crowd at your own hawker stall.</p>
     </div>
     <button id="play" class="big" type="button">Play day 1</button>
+    <button id="openAccount" class="tile account-tile" type="button"><span aria-hidden="true" class="mode-icon">👤</span><span id="accountTileText">Sign in<small id="accountTileNote">Keep your progress on any phone</small></span></button>
     <div class="screen-pick" role="group" aria-label="Screen">
       <span>Screen</span>
       <button type="button" data-screen="upright" aria-pressed="true"><i class="tall" aria-hidden="true"></i>Upright</button>
@@ -230,6 +231,43 @@
     <button id="boardRefresh" class="ghost" type="button">Refresh</button>
     <button id="boardsBack" class="link" type="button">Back</button>
   </section>
+  <section id="account" class="page subpage" aria-labelledby="accountTitle" hidden>
+    <h2 id="accountTitle">Your account</h2>
+    <div id="accountOut">
+      <p class="intro">Sign in to keep your Hawker Rush progress on any phone, and safe if your browser is cleared. Your Hawker Rush account is just for this game.</p>
+      <div class="tabs" role="group" aria-label="Sign in or create an account">
+        <button type="button" data-acct-tab="login" aria-pressed="true">Sign in</button>
+        <button type="button" data-acct-tab="signup" aria-pressed="false">New account</button>
+      </div>
+      <form id="accountForm" class="account-form">
+        <label class="field-label" for="acctUser">Username</label>
+        <input id="acctUser" class="field" autocomplete="username" maxlength="20" spellcheck="false" autocapitalize="off" required>
+        <label class="field-label" for="acctPass">Password</label>
+        <input id="acctPass" class="field" type="password" autocomplete="current-password" maxlength="128" required>
+        <p id="acctHelp" class="note">3 to 20 letters or numbers for the username; at least 6 characters for the password. There’s no email, so keep your password safe.</p>
+        <button id="acctGo" class="big" type="submit">Sign in</button>
+      </form>
+    </div>
+    <div id="accountIn" hidden>
+      <p class="account-who">👤 Signed in as <b id="acctName"></b></p>
+      <p id="acctSync" class="note" role="status"></p>
+      <button id="acctLogout" class="ghost" type="button">Log out</button>
+      <details class="settings">
+        <summary>Change password</summary>
+        <input id="acctOld" class="field" type="password" placeholder="Current password" autocomplete="current-password" maxlength="128">
+        <input id="acctNew" class="field" type="password" placeholder="New password (6 or more)" autocomplete="new-password" maxlength="128">
+        <button id="acctChange" class="ghost" type="button">Change password</button>
+      </details>
+      <details class="settings">
+        <summary>Delete my account</summary>
+        <p class="note">This deletes your account and the progress kept with it. The progress on this phone stays.</p>
+        <input id="acctDelPass" class="field" type="password" placeholder="Your password, to be sure" autocomplete="current-password" maxlength="128">
+        <button id="acctDelete" class="ghost danger" type="button">Delete my account</button>
+      </details>
+    </div>
+    <p id="acctNote" class="note" role="status"></p>
+    <button id="accountBack" class="link" type="button">Back</button>
+  </section>
   <section id="collection" class="page subpage" aria-labelledby="collectionTitle" hidden>
     <h2 id="collectionTitle">Collection</h2>
     <p class="intro" id="collectionIntro"></p>
@@ -278,6 +316,15 @@
       <ol id="giftWeek" class="gift-week" aria-label="This week's gifts"></ol>
       <p id="giftNote" class="note"></p>
       <button id="giftClose" class="big" type="button" autofocus>Collect</button>
+    </div>
+  </dialog>
+  <dialog id="pickSave" class="overlay" aria-labelledby="pickTitle">
+    <div class="card">
+      <h2 class="res-title" id="pickTitle">Which progress?</h2>
+      <p class="intro">Your account and this phone both have Hawker Rush progress. Which one do you want to keep playing?</p>
+      <button id="pickAccount" class="big" type="button"></button>
+      <button id="pickPhone" class="ghost" type="button"></button>
+      <p class="note">The other one is replaced.</p>
     </div>
   </dialog>
   <dialog id="tipCard" class="overlay" aria-labelledby="tipTitle">
