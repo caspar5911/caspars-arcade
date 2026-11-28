@@ -859,3 +859,53 @@ body.in-shift .hud-sub { display: none; }
 .screen-pick i { display: inline-block; border: 2px solid currentColor; border-radius: 3px; }
 .screen-pick i.tall { width: 11px; height: 18px; }
 .screen-pick i.wide { width: 18px; height: 11px; }
+
+/* ------------------------------------------------ more fun: bonus goals, the daily gift, collections, stall props */
+.wide-tile { grid-column: 1 / -1; }
+.bonus-goal { color: #ffe9a8; border-color: #c9a24a88; background: #3d3320; }
+.bonus-chip {
+  flex: none; padding: 0 7px; border-radius: 9px; background: #4a3a18; color: #ffe9a8;
+  font-size: .72rem; font-weight: 850; line-height: 1.6; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.bonus-chip.done { background: #2f5a35; color: #c8f5c0; }
+
+/* things bought in the shop, standing in the stall (behind the customers) */
+.props { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.prop { position: absolute; display: block; }
+.prop svg { width: 100%; height: 100%; }
+.prop-fan { right: 4px; bottom: 30px; width: clamp(26px, 7%, 46px); height: clamp(40px, 42%, 74px); }
+.prop-jar { left: clamp(40px, 12vw, 60px); bottom: 6px; width: clamp(18px, 5%, 30px); height: clamp(24px, 22%, 40px); }
+.prop-timer { right: clamp(34px, 9%, 60px); top: 34px; width: clamp(18px, 4.5%, 28px); height: clamp(18px, 4.5%, 28px); }
+
+.gift-card { text-align: center; }
+.gift-box { display: inline-block; font-size: 3rem; animation: hop .6s ease-out 2; }
+.gift-amount { margin: 2px 0 10px; color: var(--gold); font-size: 2rem; font-weight: 900; }
+.gift-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 0 0 10px; padding: 0; list-style: none; }
+.gift-week li { display: grid; gap: 1px; padding: 4px 1px; border: 1px solid var(--line); border-radius: 8px; background: #2b2018; font-size: .7rem; }
+.gift-week li small { color: var(--muted); font-size: .58rem; }
+.gift-week li.got { background: #2f4a30; border-color: #6faa6f; }
+.gift-week li.today { background: #4a3418; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+
+.achievements, .mastery, .stickers { margin: 0 0 8px; padding: 0; list-style: none; }
+.achievements li { display: flex; align-items: center; gap: 10px; margin: 5px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #2b2018; opacity: .75; }
+.achievements li.got { opacity: 1; border-color: #c9a24a; background: #3d3320; }
+.achievements .ach-icon { font-size: 1.3rem; }
+.achievements li > span:nth-child(2) { flex: 1; min-width: 0; }
+.achievements b, .mastery b, .stickers b { display: block; font-size: .9rem; }
+.achievements small, .mastery small, .stickers small { display: block; color: var(--muted); font-size: .72rem; }
+.achievements em { font-style: normal; color: var(--gold); font-weight: 850; font-size: .8rem; }
+.mastery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.mastery li { position: relative; display: grid; grid-template-columns: 40px 1fr; column-gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; background: #2b2018; }
+.mastery li > b, .mastery li > small { grid-column: 2; }
+.mastery .mastery-art { grid-row: span 2; display: grid; place-items: center; width: 40px; height: 36px; color: var(--muted); font-weight: 900; }
+.mastery .mastery-art svg { width: 100%; height: 100%; }
+.mastery .medal { position: absolute; right: 6px; top: 4px; font-size: 1.1rem; }
+.mastery li.tier-1 { border-color: #c98f5a; } .mastery li.tier-2 { border-color: #cfd6dc; } .mastery li.tier-3 { border-color: var(--gold); background: #3d3320; }
+.mastery li.unknown { opacity: .55; }
+.stickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.stickers li { display: grid; justify-items: center; padding: 6px 4px; border: 1px dashed var(--line); border-radius: 12px; background: #2b2018; text-align: center; opacity: .6; }
+.stickers li.got { opacity: 1; border-style: solid; background: #f7e6c2; color: #3a2a1f; }
+.stickers li.got small { color: #7a5a40; }
+.stickers li.gold { border: 2px solid var(--gold); box-shadow: 0 0 0 2px #ffcc6f55, 0 0 12px #ffcc6f66; }
+.stickers .person { width: 64px; height: 64px; }
+.stickers .unknown-face { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #1d1612; color: var(--muted); font-size: 1.6rem; font-weight: 900; }

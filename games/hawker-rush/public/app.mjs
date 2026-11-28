@@ -5,11 +5,14 @@ import * as Co from './coop.mjs';
 import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
 import { keepUpdated } from './updates.mjs';
 import { canPlay, clearDay } from './progress.mjs';
-import { teamPay, TEAM_BONUS } from './rewards.mjs';
+import { teamPay, teamBonus } from './rewards.mjs';
+import { bonusGoal, goalProgress } from './goals.mjs';
+import { ACHIEVEMENTS, MASTERY, STICKER_GOLD, collect, masteryOf, newAchievements } from './collection.mjs';
+import { GIFTS, claimGift, localDay } from './gift.mjs';
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'hawker-rush-save';
-const pages = ['home', 'intro', 'shift', 'shop', 'boards', 'coop'];
+const pages = ['home', 'intro', 'shift', 'shop', 'boards', 'coop', 'collection'];
 const stationActions = { toaster: 'Toast bread', pot: 'Boil eggs', grill: 'Grill satay' };
 const people = Object.fromEntries(E.PEOPLE.map(person => [person.id, person.name]));
 const ingredientLabels = { milk: 'Milk', soy: 'Soy', peanut: 'Peanut' };
@@ -35,7 +38,8 @@ function loadSave() {
   const day = raw?.version === 2 ? boundedInt(raw?.day, 1, Number.MAX_SAFE_INTEGER - 1) : 1;
   const best = {};
   for (const [id, stars] of Object.entries(raw?.version === 2 ? raw?.best ?? {} : {})) {
-    if (/^[1-9]\d*$/.test(id) && Number(id) <= day) best[id] = boundedInt(stars, 0, 3);
+    // (any day: days cleared with friends can be ahead of your own progress)
+    if (/^[1-9]\d{0,5}$/.test(id)) best[id] = boundedInt(stars, 0, 3);
   }
   const upgrades = {};
   for (const [id, upgrade] of Object.entries(E.UPGRADES)) {
@@ -53,8 +57,18 @@ function loadSave() {
       if (/^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isSafeInteger(value) && value >= 0) records[mode][key] = value;
     }
   }
+  // (collections, achievements, bonus goals done and the daily gift: kept only in their checked shapes)
+  const counts = raw => Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {})
+    .filter(([id, n]) => /^[a-zA-Z]{1,20}$/.test(id) && Number.isSafeInteger(n) && n > 0));
+  const collection = { dishes: counts(raw?.collection?.dishes), people: counts(raw?.collection?.people) };
+  const achievements = {};
+  for (const a of ACHIEVEMENTS) if (raw?.achievements?.[a.id] === true) achievements[a.id] = true;
+  const goalsDone = {};
+  for (const [id, done] of Object.entries(raw?.goalsDone ?? {})) if (/^[1-9]\d{0,5}$/.test(id) && done === true) goalsDone[id] = true;
+  const gift = /^\d{4}-\d{2}-\d{2}$/.test(raw?.gift?.last ?? '')
+    ? { last: raw.gift.last, streak: boundedInt(raw.gift.streak, 1, 100000, 1) } : null;
   return {
-    version: 2, day, best, upgrades, decor, records,
+    version: 2, day, best, upgrades, decor, records, collection, achievements, goalsDone, gift,
     wallet: Number.isFinite(raw?.wallet) && raw.wallet > 0 ? raw.wallet : 0,
     guided: raw?.guided === true || day > 1,
     nickname: typeof raw?.nickname === 'string' ? raw.nickname.slice(0, 16) : '',
@@ -155,6 +169,31 @@ function stall(decor, w) {
     ? '<span class="plant left">🪴</span><span class="plant right">🪴</span>' : '');
 }
 
+/** 🎁 The day's gift, once a day, on the home page. */
+function offerGift() {
+  if (page !== 'home' || document.querySelector('dialog[open]')) return;
+  const got = claimGift(save.gift, localDay());
+  if (!got) return;
+  save.gift = got.gift;
+  save.wallet = (cents(save.wallet) + cents(got.amount)) / 100;
+  const earned = newAchievements(save.achievements, { gift7: got.streak >= 7 });
+  for (const a of earned) {
+    save.achievements[a.id] = true;
+    save.wallet = (cents(save.wallet) + cents(a.pay)) / 100;
+  }
+  persist();
+  const at = (got.streak - 1) % GIFTS.length;
+  $('giftAmount').textContent = '+' + money(got.amount);
+  $('giftWeek').innerHTML = GIFTS.map((g, i) =>
+    `<li class="${i < at ? 'got' : i === at ? 'today' : ''}"><small>Day ${i + 1}</small><b>${money(g)}</b></li>`).join('');
+  $('giftNote').textContent = (got.streak > 1 ? `${got.streak} days in a row! ` : '') +
+    `Come back tomorrow for ${money(GIFTS[got.streak % GIFTS.length])}.` +
+    earned.map(a => ` 🏆 ${a.name} +${money(a.pay)}`).join('');
+  $('wallet').textContent = money(save.wallet);
+  F.sfx.ding();
+  openDialog('gift');
+}
+
 function activeKey(mode) {
   return mode === 'speed' ? E.speedRun().key : E.dayKey();
 }
@@ -175,6 +214,8 @@ function home({ focus = true } = {}) {
   F.musicStart(true);
   show('home', 'Hawker Rush');
   setTimeout(() => applyUpdate?.(), 0); // (a release that came out mid-shift goes in now)
+  setTimeout(offerGift, 500);
+  $('collectionNote').textContent = `${ACHIEVEMENTS.filter(a => save.achievements[a.id]).length} of ${ACHIEVEMENTS.length} achievements`;
   $('homeStall').innerHTML = stall(save.decor) +
     `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.cat('cheer')}${Art.dish('cup', ['kopi', 'milk'], { face: true })}${Art.person('uncle', 'happy')}</div>`;
   $('play').textContent = save.day > E.DAYS ? `Play endless day ${save.day}` : `Play day ${save.day}`;
@@ -237,6 +278,9 @@ function prepare(mode, day = save.day, challenge = null, previous = null) {
   briefing.hidden = !challenge;
   briefing.textContent = challenge ? `Friend’s target · ${scoreText(mode, challenge.value)}` : '';
   const fresh = mode === 'day' ? E.newOn(day) : [];
+  const bonus = mode === 'day' ? bonusGoal(day) : null;
+  $('introBonus').hidden = !bonus;
+  if (bonus) $('introBonus').textContent = `🎯 Bonus goal: ${bonus.text} · ` + (save.goalsDone[day] ? 'done ✓' : `+${money(bonus.reward)} the first time`);
   $('introNew').hidden = !fresh.length;
   $('introNew').innerHTML = fresh.length ? `<h3>${day === 1 ? 'Your first order' : 'New on the menu'}</h3>${fresh.map(recipeCard).join('')}` : '';
   const orders = E.schedule(spec);
@@ -465,6 +509,11 @@ function startShift() {
       ? startRankedRun(config.mode, config.key) : Promise.resolve(null),
   };
   hintOverride = null;
+  // (what this shift served: for the bonus goal, dish mastery and customer stickers)
+  run.stats = { dishes: {}, people: {}, perfect: 0 };
+  run.bonus = config.mode === 'day' ? bonusGoal(config.day) : null; // (story days, solo or with friends)
+  run.bonusShown = false;
+  $('bonusChip').hidden = !run.bonus;
   $('cat').html = null;
   $('fx').replaceChildren();
   show('shift', run.title, run.key ?? '');
@@ -474,6 +523,7 @@ function startShift() {
   run.prep = buildCounter();
   buildKitchen();
   dressStall();
+  $('props').innerHTML = Art.props(shift.upgrades); // (what you bought in the shop, standing in your stall)
   buildGoals();
   F.musicStop();
   F.sfx.start();
@@ -756,6 +806,55 @@ function showEmote(seat, e) {
   sayTimer = setTimeout(() => say.classList.remove('show'), 2600);
 }
 
+/** What's true after this shift, for the achievements. */
+function achievementFacts(stars) {
+  const total = save.totals.served;
+  return {
+    first: total >= 1, stars3: run.mode === 'day' && stars === 3, combo10: shift.bestCombo >= 10,
+    early: (shift.early ?? 0) > 0, spotless: shift.served >= 10 && shift.lost + shift.passed === 0,
+    served100: total >= 100, served500: total >= 500, friends: Boolean(run.coop), daily: run.mode === 'daily',
+    speed: run.mode === 'speed' && shift.served >= E.SPEED_CUSTOMERS, goals5: Object.keys(save.goalsDone).length >= 5,
+    allDays: Array.from({ length: E.DAYS }, (_, i) => i + 1).every(d => (save.best[d] ?? 0) > 0),
+    gift7: (save.gift?.streak ?? 0) >= 7, album: E.PEOPLE.every(p => (save.collection.people[p.id] ?? 0) > 0),
+  };
+}
+
+/** After a shift: the bonus goal, dish mastery, stickers and achievements (paid into the wallet). Rows for the results. */
+function settle(stars) {
+  const rows = [];
+  const pay = amount => { save.wallet = (cents(save.wallet) + cents(amount)) / 100; };
+  if (run.bonus) {
+    const p = goalProgress(run.bonus, shiftStats(true));
+    if (p.done && !save.goalsDone[run.day]) {
+      save.goalsDone[run.day] = true;
+      pay(run.bonus.reward);
+      rows.push(['🎯 Bonus goal', `${run.bonus.text} ✓ +${money(run.bonus.reward)}`]);
+    } else rows.push(['🎯 Bonus goal', p.done ? `${run.bonus.text} ✓ (again)` : `${run.bonus.text} · ${p.short}`]);
+  }
+  const news = collect(save.collection, run.stats.dishes, run.stats.people);
+  const tiers = news.filter(n => n.kind === 'mastery');
+  if (tiers.length) {
+    const amount = tiers.reduce((sum, t) => sum + t.tier.pay, 0);
+    pay(amount);
+    rows.push(['🍽 Dish mastery', tiers.map(t => `${E.DISHES[t.id].name} ${t.tier.name}`).join(', ') + ` +${money(amount)}`]);
+  }
+  const stickers = news.filter(n => n.kind === 'sticker');
+  if (stickers.length) rows.push(['⭐ New stickers', stickers.map(n => people[n.id] ?? n.id).join(', ')]);
+  const golds = news.filter(n => n.kind === 'gold-sticker');
+  if (golds.length) {
+    pay(10 * golds.length);
+    rows.push(['🌟 Gold stickers', golds.map(n => people[n.id] ?? n.id).join(', ') + ` +${money(10 * golds.length)}`]);
+  }
+  const earned = newAchievements(save.achievements, achievementFacts(stars));
+  for (const a of earned) {
+    save.achievements[a.id] = true;
+    pay(a.pay);
+  }
+  if (earned.length === 1) rows.push(['🏆 ' + earned[0].name, '+' + money(earned[0].pay)]);
+  else if (earned.length) rows.push(['🏆 Achievements', earned.map(a => a.name).join(', ') + ` +${money(earned.reduce((sum, a) => sum + a.pay, 0))}`]);
+  return rows;
+}
+
 function finishCoop() {
   clearDrag();
   F.musicStop();
@@ -770,6 +869,7 @@ function finishCoop() {
   const opened = clearDay(save, run.day, stars); // (and everyone gets the day cleared on their own list)
   save.totals.served += shift.served;
   save.totals.shifts++;
+  const rewards = settle(stars);
   persist();
   result = { coop: true, mode: 'day', title: run.title, day: run.day };
   F.sfx.stars(stars);
@@ -783,10 +883,11 @@ function finishCoop() {
     ['Left or walked past', shift.lost + shift.passed], ['Tips and combos', money(shift.tips)]];
   if (shift.early) rows.push(['Closed early', `${shift.early} s early · +${money(shift.earlyBonus)}`]);
   if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
-  rows.push(['Your share', `${money(share)}` + (shift.players >= 2 ? ` (incl. +${Math.round(TEAM_BONUS * 100)}% teamwork bonus)` : '')]);
+  rows.push(['Your share', `${money(share)}` + (shift.players >= 2 ? ` (incl. +${Math.round(teamBonus(shift.players) * 100)}% teamwork bonus)` : '')]);
   rows.push(['Your days', stars
     ? `Day ${run.day} ${starsText(save.best[run.day])}${stars > before ? ' saved' : ''}` + (opened ? ` · Day ${opened} open` : '')
     : `Day ${run.day} not cleared yet`]);
+  rows.push(...rewards);
   rows.push(['Your wallet', money(save.wallet)]);
   const list = $('resList');
   list.replaceChildren();
@@ -1085,7 +1186,7 @@ function renderStations() {
     const key = JSON.stringify(shapes);
     if (key !== view.key) {
       view.key = key;
-      art.innerHTML = Art.station(id, shapes);
+      art.innerHTML = Art.station(id, shapes, { fast: shift.upgrades.fast ?? 0 });
     }
     el.classList.toggle('has-burnt', count.burnt > 0);
     el.classList.toggle('has-ready', count.ready > 0);
@@ -1154,7 +1255,27 @@ function renderHint() {
   setText($('hudHint'), text); // (sideways, the tip rides in the top bar)
 }
 
+/** This shift so far, in the shape the bonus goal reads. */
+function shiftStats(over = false) {
+  return { served: shift.served, burnt: shift.burnt, lost: shift.lost, passed: shift.passed, bestCombo: shift.bestCombo,
+    tips: shift.tips, early: shift.early ?? 0, dishes: run.stats.dishes, perfect: run.stats.perfect, over };
+}
+
+function renderBonus() {
+  if (!run.bonus) return;
+  const p = goalProgress(run.bonus, shiftStats());
+  setText($('bonusChip'), '🎯 ' + p.short);
+  $('bonusChip').classList.toggle('done', p.done);
+  $('bonusChip').title = 'Bonus goal: ' + run.bonus.text;
+  if (p.done && !run.bonusShown) {
+    run.bonusShown = true;
+    banner('🎯 Bonus goal done!');
+    F.sfx.ding();
+  }
+}
+
 function render() {
+  renderBonus();
   setText($('money'), money(shift.coins));
   const time = run.mode === 'speed' ? shift.t : Math.max(0, Math.ceil(E.SHIFT - shift.t));
   setText($('clock'), duration(time));
@@ -1301,8 +1422,14 @@ function handleEvents() {
         fly(station, run.prep[event.spot]?.wrap, dishArt(event.dish));
         break;
       case 'ready': F.sfx.ready(); float('Ready!', station, 'good'); break;
-      case 'serve': F.sfx.serve(); break;
-      case 'paid':
+      case 'serve':
+        F.sfx.serve();
+        if (event.dish) run.stats.dishes[event.dish] = (run.stats.dishes[event.dish] ?? 0) + 1;
+        break;
+      case 'paid': {
+        const who = shift.seats[event.seat]?.who; // (still in the seat, enjoying it)
+        if (who) run.stats.people[who] = (run.stats.people[who] ?? 0) + 1;
+        if (event.perfect) run.stats.perfect++;
         F.sfx.paid(event.combo);
         float('+' + money(event.amount), seat, 'good');
         coins(seat, Math.ceil(event.amount));
@@ -1311,6 +1438,7 @@ function handleEvents() {
         if (event.perfect) window.setTimeout(() => float('Perfect!', seat, 'good'), 300);
         if ([5, 10, 15, 20].includes(event.combo)) banner(`Combo ×${event.combo}!`);
         break;
+      }
       case 'angry':
         F.sfx.angry();
         float('Left!', seat, 'bad');
@@ -1447,6 +1575,7 @@ function finish() {
     save.wallet = (cents(save.wallet) + cents(shift.coins)) / 100;
     clearDay(save, run.day, stars);
   }
+  result.rewards = settle(stars);
   persist();
   F.sfx.stars(run.mode === 'speed' ? (shift.served === E.SPEED_CUSTOMERS ? 3 : 0) : stars);
   renderResults();
@@ -1475,6 +1604,7 @@ function renderResults() {
   if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
   if (burnt) rows.push(['Food burnt', burnt]);
   if (wasted) rows.push(['Dishes binned', wasted]);
+  rows.push(...(done.rewards ?? []));
   if (story) rows.push(['Wallet', money(save.wallet)]);
   if (mode !== 'speed' && stars < 3) rows.push(['Next star', money(shift.goal[stars])]);
   if (done.challenge) {
@@ -1723,6 +1853,35 @@ $('shopBack').addEventListener('click', () => {
 });
 $('pause').addEventListener('click', pause);
 
+function collectionPage() {
+  show('collection', 'Collection');
+  const earned = ACHIEVEMENTS.filter(a => save.achievements[a.id]).length;
+  const met = E.PEOPLE.filter(p => (save.collection.people[p.id] ?? 0) > 0).length;
+  $('collectionIntro').textContent = `${earned} of ${ACHIEVEMENTS.length} achievements · ${met} of ${E.PEOPLE.length} stickers`;
+  $('achievementList').innerHTML = ACHIEVEMENTS.map(a => {
+    const got = save.achievements[a.id];
+    return `<li class="${got ? 'got' : ''}"><span class="ach-icon" aria-hidden="true">${got ? '🏆' : '🔒'}</span>` +
+      `<span><b>${a.name}</b><small>${a.what}</small></span><em>${got ? 'Done' : '+' + money(a.pay)}</em></li>`;
+  }).join('');
+  const known = E.menuFor(Math.min(E.DAYS, Math.max(save.day, ...Object.keys(save.best).map(Number))));
+  $('dishList').innerHTML = Object.keys(E.DISHES).map(id => {
+    const n = save.collection.dishes[id] ?? 0;
+    if (!known.includes(id) && !n) return `<li class="unknown"><span class="mastery-art">?</span><b>???</b><small>Not on your menu yet</small></li>`;
+    const tier = masteryOf(n);
+    const next = MASTERY[tier];
+    return `<li class="tier-${tier}"><span class="mastery-art">${dishArt(id)}</span><b>${E.DISHES[id].name}</b>` +
+      `<small>${n} served${next ? ` · ${next.name} at ${next.at}` : ' · Gold!'}</small>` +
+      `<span class="medal" aria-label="${tier ? MASTERY[tier - 1].name : 'No medal yet'}">${['', '🥉', '🥈', '🥇'][tier]}</span></li>`;
+  }).join('');
+  $('stickerList').innerHTML = E.PEOPLE.map(p => {
+    const n = save.collection.people[p.id] ?? 0;
+    return `<li class="${n ? 'got' : ''}${n >= STICKER_GOLD ? ' gold' : ''}">` +
+      (n ? Art.person(p.id, 'happy') : '<span class="unknown-face" aria-hidden="true">?</span>') +
+      `<b>${n ? p.name : '???'}</b><small>${n ? `${n} served` : 'Not met yet'}</small></li>`;
+  }).join('');
+  focusHeading($('collectionTitle'));
+}
+
 /** One step back inside the game: a page goes back the way its own Back button does; a shift pauses (quit from there). */
 function stepBack() {
   if (page === 'shift') {
@@ -1730,7 +1889,7 @@ function stepBack() {
     else if (!$('results').open) home();
     return;
   }
-  const backs = { intro: 'introBack', shop: 'shopBack', boards: 'boardsBack', coop: 'coopBack' };
+  const backs = { intro: 'introBack', shop: 'shopBack', boards: 'boardsBack', coop: 'coopBack', collection: 'collectionBack' };
   if (backs[page]) $(backs[page]).click();
 }
 $('back').addEventListener('click', event => {
@@ -1744,6 +1903,9 @@ $('book').addEventListener('click', openBook);
 $('pausedRecipes').addEventListener('click', openBook);
 $('recipesClose').addEventListener('click', () => closeDialog('recipes'));
 $('boardsBack').addEventListener('click', () => home());
+$('openCollection').addEventListener('click', collectionPage);
+$('collectionBack').addEventListener('click', () => home());
+$('giftClose').addEventListener('click', () => closeDialog('gift'));
 $('boardRefresh').addEventListener('click', () => boards());
 for (const tab of $('boards').querySelectorAll('[data-board]')) tab.addEventListener('click', () => boards(tab.dataset.board));
 
