@@ -4,6 +4,7 @@ import * as F from './feel.mjs';
 import * as Co from './coop.mjs';
 import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
 import { keepUpdated } from './updates.mjs';
+import { canPlay, clearDay } from './progress.mjs';
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'hawker-rush-save';
@@ -189,7 +190,7 @@ function home({ focus = true } = {}) {
   const days = Array.from({ length: E.DAYS }, (_, index) => index + 1);
   for (let d = Math.max(E.DAYS + 1, count - 9); d <= count; d++) days.push(d);
   for (const day of days) {
-    const unlocked = day <= save.day;
+    const unlocked = canPlay(save, day); // (a day cleared with friends can be played again, even ahead of your own progress)
     const stars = save.best[day] ?? 0;
     const item = button('');
     item.disabled = !unlocked;
@@ -525,7 +526,8 @@ function renderRoom() {
   }
   $('coopHost').hidden = !host;
   if (host && !$('coopDay').options.length) {
-    for (let d = 1; d <= Math.min(Math.max(1, save.day), E.DAYS); d++) {
+    for (let d = 1; d <= E.DAYS; d++) {
+      if (!canPlay(save, d)) continue;
       const option = document.createElement('option');
       option.value = d;
       option.textContent = `Day ${d}` + (E.newOn(d).length ? ` · ${E.newOn(d).map(id => E.DISHES[id].name).join(', ')}` : '');
@@ -762,6 +764,8 @@ function finishCoop() {
   }
   const stars = E.starsFor(shift.coins, shift.goal);
   save.wallet = (cents(save.wallet) + cents(shift.coins)) / 100; // (everyone in the team earns the shift's takings)
+  const before = save.best[run.day] ?? 0;
+  const opened = clearDay(save, run.day, stars); // (and everyone gets the day cleared on their own list)
   save.totals.served += shift.served;
   save.totals.shifts++;
   persist();
@@ -777,6 +781,9 @@ function finishCoop() {
     ['Left or walked past', shift.lost + shift.passed], ['Tips and combos', money(shift.tips)]];
   if (shift.early) rows.push(['Closed early', `${shift.early} s early · +${money(shift.earlyBonus)}`]);
   if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
+  rows.push(['Your days', stars
+    ? `Day ${run.day} ${starsText(save.best[run.day])}${stars > before ? ' saved' : ''}` + (opened ? ` · Day ${opened} open` : '')
+    : `Day ${run.day} not cleared yet`]);
   rows.push(['Your wallet', money(save.wallet)]);
   const list = $('resList');
   list.replaceChildren();
@@ -1435,8 +1442,7 @@ function finish() {
   save.totals.shifts++;
   if (run.mode === 'day') {
     save.wallet = (cents(save.wallet) + cents(shift.coins)) / 100;
-    save.best[run.day] = Math.max(save.best[run.day] ?? 0, stars);
-    if (stars && run.day === save.day && save.day < Number.MAX_SAFE_INTEGER - 1) save.day++;
+    clearDay(save, run.day, stars);
   }
   persist();
   F.sfx.stars(run.mode === 'speed' ? (shift.served === E.SPEED_CUSTOMERS ? 3 : 0) : stars);
@@ -1476,7 +1482,8 @@ function renderResults() {
   }
   $('resList').innerHTML = rows.map(([label, amount]) => `<li><span>${label}</span><b>${amount}</b></li>`).join('');
   $('resNext').hidden = !story || day >= save.day;
-  $('resNext').textContent = day + 1 > E.DAYS ? 'Play the next endless day' : `Play day ${day + 1}`;
+  // (on to your next day still to clear: days you already cleared with friends are skipped)
+  $('resNext').textContent = save.day > E.DAYS && day >= E.DAYS ? 'Play the next endless day' : `Play day ${save.day}`;
   $('resChallenge').hidden = story;
   $('resShop').hidden = !story;
   $('resRetry').textContent = story ? 'Replay day' : 'Play again';
@@ -1696,7 +1703,7 @@ $('openShop').addEventListener('click', () => shop());
 $('openBoards').addEventListener('click', () => boards());
 $('startShift').addEventListener('click', startShift);
 $('introBack').addEventListener('click', () => home());
-$('resNext').addEventListener('click', () => prepare('day', result.day + 1));
+$('resNext').addEventListener('click', () => prepare('day', save.day));
 $('resRetry').addEventListener('click', () => result?.coop ? coopPage() : prepare(result.mode, result.day, result.challenge, result.mode === 'day' ? null : result));
 $('resShop').addEventListener('click', () => shop('results'));
 $('resHome').addEventListener('click', () => home());
