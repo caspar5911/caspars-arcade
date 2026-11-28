@@ -1,4 +1,4 @@
-// Hawker Rush (v5): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
+// Hawker Rush (v6): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
 // step: a cup, then kopi, then condensed milk; a plate, then toast from the toaster (it burns!), kaya and butter...
 // then serve it to the customer. Some dishes are built first and then cooked whole: a curry puff (pastry, potato,
 // curry) goes into the wok to fry; roti prata goes on the griddle, and must be flipped halfway.
@@ -10,7 +10,7 @@
 // long: the next customer due soon walks straight in, so quick players get busier, and can close early for a bonus.
 // Deterministic: a seed and the list of actions replay exactly (for checked leaderboards).
 
-export const RULES = 5; // the rules version: the leaderboard server (ENGINE) and every phone in a co-op stall must agree
+export const RULES = 6; // the rules version: the leaderboard server (ENGINE) and every phone in a co-op stall must agree
 export const TICK = 1 / 30;
 export const SEATS = 4;
 export const QUEUE_MAX = 5;
@@ -213,11 +213,13 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
   const speed = mode === 'speed';
   const menu = menuFor(speed ? DAYS : day);
   const fresh = speed ? [] : newOn(day);
-  const solo = speed ? SPEED_CUSTOMERS : Math.min(30, 9 + Math.round(day * 1.3));
+  // (after day 10 the crowd grows more slowly: the whole menu is on, and roti telur takes many taps)
+  const learning = !speed && day >= 9 && fresh.some(d => DISHES[d].cook); // (a new cooked dish: a learning day, a smaller crowd)
+  const solo = speed ? SPEED_CUSTOMERS : Math.min(30, 9 + Math.round(Math.min(day, 10) * 1.3 + Math.max(0, day - 10) * .6)) - (learning ? 2 : 0);
   const count = Math.round(solo * (1 + .6 * (team - 1)));
   const times = speed ? null : arrivalTimes(count, day, rng);
   if (times) times[0] = 1.5; // (someone is always waiting when the stall opens)
-  const hard = speed ? .2 : Math.min(.3, day * .018);
+  const hard = speed ? .2 : day >= 11 ? .15 : Math.min(.2, day * .018);
   const people = [];
   const regularsToday = new Set();
   let at = 1.5;
@@ -228,7 +230,7 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
     const big = speed ? (rng() < .35 ? 1 : 0) : day === 1 ? 0 : day < 4 ? (rng() < .3 ? 1 : 0) : (rng() < .2 ? 2 : rng() < .5 ? 1 : 0);
     const order = [];
     for (let k = 0; k <= big; k++) {
-      order.push(fresh.length && rng() < .35 ? fresh[Math.floor(rng() * fresh.length)] : menu[Math.floor(rng() * menu.length)]);
+      order.push(fresh.length && rng() < (day >= 9 ? .22 : .35) ? fresh[Math.floor(rng() * fresh.length)] : menu[Math.floor(rng() * menu.length)]);
     }
     let who = PEOPLE[Math.floor(rng() * PEOPLE.length)];
     // someone special? (story and daily shifts: a speed run is the same plain line for everyone)
@@ -257,9 +259,10 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
 }
 
 /** The stars of a day: a share of what every order is worth before tips. */
-export function goals(people) {
+export function goals(people, day = 1) {
   const worth = people.reduce((s, p) => s + p.order.reduce((t, d) => t + DISHES[d].price, 0), 0);
-  return [Math.round(worth * .45), Math.round(worth * .8), Math.round(worth * 1.05)];
+  // (from day 9, the first star — enough to go on — asks a little less: a busy shift with a few losses still counts)
+  return [Math.round(worth * (day >= 9 ? .38 : .45)), Math.round(worth * .8), Math.round(worth * 1.05)];
 }
 
 export function starsFor(coins, goal) {
@@ -287,7 +290,7 @@ export function createShift(spec = {}) {
     stations,
     coins: 0, tips: 0, served: 0, dishes: 0, lost: 0, passed: 0, burnt: 0, wasted: 0, combo: 0, bestCombo: 0,
     early: 0, earlyBonus: 0, feverUntil: 0, fevers: 0, reviews: 0,
-    goal: goals(people),
+    goal: goals(people, mode === 'speed' ? DAYS : day),
     events: [],
   };
 }
