@@ -107,7 +107,7 @@ function show(next, title, subtitle = '') {
   syncHistory();
   if ((next === 'shift') !== (document.body.dataset.locked === 'true')) {
     document.body.dataset.locked = String(next === 'shift');
-    lockScreen(); // (a shift turns the phone the chosen way; leaving it lets the menus turn freely again)
+    lockScreen(); // (a shift turns the phone the chosen way; leaving it puts the menus back upright)
   }
   document.body.classList.toggle('in-shift', next === 'shift');
   $('pause').hidden = next !== 'shift';
@@ -163,11 +163,6 @@ function home({ focus = true } = {}) {
     Co.leave();
   }
   $('team').hidden = true;
-  try {
-    screen.orientation?.unlock?.();
-  } catch {
-    // (nothing locked)
-  }
   closeDialog('results');
   closeDialog('paused');
   closeDialog('recipes');
@@ -834,12 +829,11 @@ try {
 }
 const needsTurning = () => screenPref === 'sideways' && matchMedia('(orientation: portrait)').matches;
 
-/** The chosen way round holds only during a shift; the menus follow however the phone is held. */
+/** The menus are always upright; only a shift turns the chosen way round. */
 async function lockScreen() {
   if (!matchMedia('(pointer: coarse)').matches) return;
   try {
-    if (page === 'shift') await screen.orientation?.lock?.(screenPref === 'sideways' ? 'landscape' : 'portrait');
-    else screen.orientation?.unlock?.();
+    await screen.orientation?.lock?.(page === 'shift' && screenPref === 'sideways' ? 'landscape' : 'portrait');
   } catch {
     // (only allowed in full screen, and never on iPhones)
   }
@@ -855,7 +849,7 @@ function setScreen(pref, remember = true) {
     } catch {
       // (just for this visit)
     }
-    if (page === 'shift' && (document.fullscreenElement || installed())) lockScreen(); // (from the pause card)
+    if (page === 'shift' && (document.fullscreenElement || installed())) lockScreen(); // (from the pause card; menus stay upright)
   }
 }
 
@@ -1795,6 +1789,9 @@ $('startShift').addEventListener('click', goFullscreen);
 $('coopGo').addEventListener('click', goFullscreen);
 $('coopJoin').addEventListener('click', goFullscreen);
 $('upright').addEventListener('click', () => setScreen('upright'));
+// (menus held sideways where the phone can't be held upright for us: ask, but it can be waved away for this visit)
+$('keepSideways').addEventListener('click', () => document.body.classList.add('menus-sideways'));
+if (installed()) lockScreen(); // (the installed app opens on the menus: upright)
 for (const b of document.querySelectorAll('[data-screen]')) b.addEventListener('click', () => setScreen(b.dataset.screen));
 setScreen(screenPref, false);
 $('coopCreate').addEventListener('click', () => coopOpen(null));
