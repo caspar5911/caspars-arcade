@@ -69,6 +69,21 @@
       <button type="button" data-theme-pick="lavender" aria-label="Lavender" title="Lavender" aria-pressed="false" style="--sw-a:#e6dcff;--sw-b:#e6dcff"><span aria-hidden="true">⭐</span></button>
       <button type="button" data-theme-pick="classic" aria-label="Classic kopi (dark)" title="Classic kopi (dark)" aria-pressed="false" style="--sw-a:#4a3424;--sw-b:#4a3424"><span aria-hidden="true">🟤</span></button>
     </div>
+    <details class="settings">
+      <summary>⚙️ More settings</summary>
+      <div class="screen-pick" role="group" aria-label="Vibration">
+        <span>Buzz</span>
+        <button type="button" data-buzz="on" aria-pressed="true">📳 On</button>
+        <button type="button" data-buzz="off" aria-pressed="false">Off</button>
+      </div>
+      <div class="screen-pick" role="group" aria-label="Anonymous play stats">
+        <span>Stats</span>
+        <button type="button" data-stats="on" aria-pressed="true">📊 Share</button>
+        <button type="button" data-stats="off" aria-pressed="false">Don’t</button>
+      </div>
+      <p class="note settings-note">Stats are anonymous: which day you reach, stars, customers served and how long you play, to help balance the game. No name, account or address is sent.</p>
+      <button id="resetTips" class="link" type="button">Show the first-time tips again</button>
+    </details>
     <button id="openCoop" class="tile coop-tile" type="button"><span aria-hidden="true" class="mode-icon">👫</span><span>Play with friends<small>Share one stall, live, on your phones</small></span></button>
     <div class="mode-grid">
       <button id="openSpeed" class="tile" type="button"><span aria-hidden="true" class="mode-icon">◷</span><span>Speed Run<small id="speedBest">Serve 15 customers</small></span></button>
@@ -252,6 +267,14 @@
       <ol id="giftWeek" class="gift-week" aria-label="This week's gifts"></ol>
       <p id="giftNote" class="note"></p>
       <button id="giftClose" class="big" type="button" autofocus>Collect</button>
+    </div>
+  </dialog>
+  <dialog id="tipCard" class="overlay" aria-labelledby="tipTitle">
+    <div class="card tip-card">
+      <span id="tipIcon" class="tip-icon" aria-hidden="true"></span>
+      <h2 class="res-title" id="tipTitle"></h2>
+      <p id="tipText" class="intro"></p>
+      <button id="tipOk" class="big" type="button" autofocus>Got it!</button>
     </div>
   </dialog>
   <dialog id="fsTip" class="overlay" aria-labelledby="fsTipTitle">
