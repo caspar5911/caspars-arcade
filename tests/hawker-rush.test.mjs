@@ -345,3 +345,13 @@ test('the leaderboard server replays with this exact copy of the rules', async (
   const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
   assert.equal(createHash('sha256').update(text).digest('hex'), 'abbdfa9f95395246df03d90221559209fdac5e9e4abf4f9f950645a0d7563fd3');
 });
+
+test('a phone showing an old copy moves to a newer release (and only a newer one)', async () => {
+  const { newerBuild, updateUrl } = await import('../games/hawker-rush/public/updates.mjs');
+  assert.equal(newerBuild('104', { build: 107 }), 107);
+  assert.equal(newerBuild('107', { build: 107 }), null);
+  assert.equal(newerBuild('108', { build: 107 }), null);
+  assert.equal(newerBuild('development', { build: 107 }), null); // (a local copy never reloads)
+  assert.equal(newerBuild('104', {}), null);
+  assert.equal(updateUrl('https://x.test/games/hawker-rush/?room=ABCDE', 107), 'https://x.test/games/hawker-rush/?room=ABCDE&v=107');
+});
