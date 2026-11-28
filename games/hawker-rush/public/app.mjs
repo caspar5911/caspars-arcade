@@ -5,6 +5,7 @@ import * as Co from './coop.mjs';
 import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
 import { keepUpdated } from './updates.mjs';
 import { canPlay, clearDay } from './progress.mjs';
+import { teamPay, TEAM_BONUS } from './rewards.mjs';
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'hawker-rush-save';
@@ -763,7 +764,8 @@ function finishCoop() {
     Co.send({ t: 'over' });
   }
   const stars = E.starsFor(shift.coins, shift.goal);
-  save.wallet = (cents(save.wallet) + cents(shift.coins)) / 100; // (everyone in the team earns the shift's takings)
+  const share = teamPay(shift.coins, shift.players); // (a solo shift's pay, plus the teamwork bonus)
+  save.wallet = (cents(save.wallet) + cents(share)) / 100;
   const before = save.best[run.day] ?? 0;
   const opened = clearDay(save, run.day, stars); // (and everyone gets the day cleared on their own list)
   save.totals.served += shift.served;
@@ -781,6 +783,7 @@ function finishCoop() {
     ['Left or walked past', shift.lost + shift.passed], ['Tips and combos', money(shift.tips)]];
   if (shift.early) rows.push(['Closed early', `${shift.early} s early · +${money(shift.earlyBonus)}`]);
   if (shift.bestCombo > 1) rows.push(['Best combo', shift.bestCombo]);
+  rows.push(['Your share', `${money(share)}` + (shift.players >= 2 ? ` (incl. +${Math.round(TEAM_BONUS * 100)}% teamwork bonus)` : '')]);
   rows.push(['Your days', stars
     ? `Day ${run.day} ${starsText(save.best[run.day])}${stars > before ? ' saved' : ''}` + (opened ? ` · Day ${opened} open` : '')
     : `Day ${run.day} not cleared yet`]);
