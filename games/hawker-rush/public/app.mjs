@@ -227,7 +227,7 @@ function home({ focus = true } = {}) {
   setTimeout(offerGift, 500);
   $('collectionNote').textContent = `${ACHIEVEMENTS.filter(a => save.achievements[a.id]).length} of ${ACHIEVEMENTS.length} achievements`;
   $('homeStall').innerHTML = stall(save.decor) +
-    `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.cat('cheer')}${Art.dish('cup', ['kopi', 'milk'], { face: true })}${Art.person('uncle', 'happy')}</div>`;
+    `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.cat('cheer', theme)}${Art.dish('cup', ['kopi', 'milk'], { face: true })}${Art.person('uncle', 'happy')}</div>`;
   $('play').textContent = save.day > E.DAYS ? `Play endless day ${save.day}` : `Play day ${save.day}`;
   $('wallet').textContent = money(save.wallet);
   const today = E.daily();
@@ -1328,7 +1328,7 @@ function render() {
   renderStations();
   renderNext();
   renderHint();
-  setContent($('cat'), Art.cat(catMood()));
+  setContent($('cat'), Art.cat(catMood(), theme));
   const wave = E.WAVES[shift.wave]?.[2];
   $('shift').classList.toggle('rush', wave === 'lunch' || wave === 'dinner');
   const fever = shift.t < shift.feverUntil;
@@ -2018,17 +2018,33 @@ $('coopGo').addEventListener('click', goFullscreen);
 $('coopJoin').addEventListener('click', goFullscreen);
 $('upright').addEventListener('click', () => setScreen('upright'));
 
-// 🎨 colour themes: the page, its panels and the stall's wall and counter (the food and the people stay as they are)
-const THEMES = ['kopi', 'pandan', 'ocean', 'sakura', 'night'];
-function setTheme(theme, remember = true) {
-  const pick = THEMES.includes(theme) ? theme : 'kopi';
-  if (pick === 'kopi') delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = pick;
-  for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === pick));
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--ground').trim());
+// 🎨 colour themes: bright, cute pastels (and the classic dark kopi), each with its own pattern, drifting petals/leaves/
+// bubbles/stars, awning colours and an outfit for Mochi the cat. The food and the people stay as they are.
+const THEMES = ['latte', 'pandan', 'ocean', 'sakura', 'lavender', 'classic'];
+let theme = 'latte';
+function setTheme(pick, remember = true) {
+  theme = THEMES.includes(pick) ? pick : 'latte';
+  const root = document.documentElement;
+  if (theme === 'classic') {
+    delete root.dataset.theme;
+    delete root.dataset.tone;
+  } else Object.assign(root.dataset, { theme, tone: 'light' });
+  for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === theme));
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--ground').trim());
+  // the drifting things behind the menus: a dozen, each with its own place, size and pace
+  const sky = $('ambience');
+  if (!sky.children.length) {
+    for (let k = 0; k < 12; k++) {
+      const p = document.createElement('span');
+      p.style.cssText = `--x:${(k * 37 + 11) % 100}%;--y:${(k * 53 + 7) % 90}vh;--size:${14 + (k * 7) % 12}px;` +
+        `--dur:${9 + (k * 5) % 9}s;--delay:-${(k * 2.3).toFixed(1)}s`;
+      sky.append(p);
+    }
+  }
+  if (remember && page === 'home') home({ focus: false }); // (Mochi on the home page changes outfit)
   if (remember) {
     try {
-      localStorage.setItem('hawker-rush-theme', pick);
+      localStorage.setItem('hawker-rush-theme', theme);
     } catch {
       // (just for this visit)
     }
@@ -2036,9 +2052,10 @@ function setTheme(theme, remember = true) {
 }
 for (const b of document.querySelectorAll('[data-theme-pick]')) b.addEventListener('click', () => setTheme(b.dataset.themePick));
 try {
-  setTheme(localStorage.getItem('hawker-rush-theme') ?? 'kopi', false);
+  const saved = localStorage.getItem('hawker-rush-theme');
+  setTheme({ kopi: 'latte', night: 'lavender' }[saved] ?? saved ?? 'latte', false);
 } catch {
-  setTheme('kopi', false);
+  setTheme('latte', false);
 }
 // (menus held sideways where the phone can't be held upright for us: ask, but it can be waved away for this visit)
 $('keepSideways').addEventListener('click', () => document.body.classList.add('menus-sideways'));
