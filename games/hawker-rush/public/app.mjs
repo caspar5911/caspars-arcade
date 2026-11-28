@@ -105,6 +105,10 @@ function show(next, title, subtitle = '') {
     $('back').setAttribute('aria-label', out ? 'All games' : 'Back');
   }
   syncHistory();
+  if ((next === 'shift') !== (document.body.dataset.locked === 'true')) {
+    document.body.dataset.locked = String(next === 'shift');
+    lockScreen(); // (a shift turns the phone the chosen way; leaving it lets the menus turn freely again)
+  }
   document.body.classList.toggle('in-shift', next === 'shift');
   $('pause').hidden = next !== 'shift';
   $('hudTitle').textContent = title;
@@ -830,10 +834,12 @@ try {
 }
 const needsTurning = () => screenPref === 'sideways' && matchMedia('(orientation: portrait)').matches;
 
+/** The chosen way round holds only during a shift; the menus follow however the phone is held. */
 async function lockScreen() {
   if (!matchMedia('(pointer: coarse)').matches) return;
   try {
-    await screen.orientation?.lock?.(screenPref === 'sideways' ? 'landscape' : 'portrait');
+    if (page === 'shift') await screen.orientation?.lock?.(screenPref === 'sideways' ? 'landscape' : 'portrait');
+    else screen.orientation?.unlock?.();
   } catch {
     // (only allowed in full screen, and never on iPhones)
   }
@@ -849,7 +855,7 @@ function setScreen(pref, remember = true) {
     } catch {
       // (just for this visit)
     }
-    if (document.fullscreenElement || installed()) lockScreen();
+    if (page === 'shift' && (document.fullscreenElement || installed())) lockScreen(); // (from the pause card)
   }
 }
 
