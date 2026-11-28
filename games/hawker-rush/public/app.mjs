@@ -1997,6 +1997,19 @@ function pause() {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) pause();
 });
+// 📐 the height the phone really shows (some browsers count the address bar in 100vh, so the stall came out one bar
+// too tall and the page scrolled): measured, and measured again whenever the bars, the size or the way round change
+function measureScreen() {
+  const h = Math.round(window.innerHeight);
+  if (h > 0) {
+    document.documentElement.style.setProperty('--app-h', h + 'px');
+    document.documentElement.dataset.appH = '';
+  }
+}
+for (const type of ['resize', 'orientationchange']) addEventListener(type, measureScreen);
+window.visualViewport?.addEventListener('resize', measureScreen);
+document.addEventListener('fullscreenchange', () => setTimeout(measureScreen, 150));
+measureScreen();
 // 📊 the game closed mid-shift (the tab, or the app swiped away): counted as a shift left part-way
 addEventListener('pagehide', () => {
   if (run && shift?.phase === 'running' && page === 'shift') shiftStat(true);
