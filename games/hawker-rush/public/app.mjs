@@ -570,6 +570,7 @@ function startShift() {
       ? startRankedRun(config.mode, config.key) : Promise.resolve(null),
   };
   hintOverride = null;
+  tipQueue.length = 0; // (a tip left waiting from a shift that was quit doesn't pop up later at a random moment)
   // (what this shift served: for the bonus goal, dish mastery and customer stickers)
   run.stats = { dishes: {}, people: {}, perfect: 0, regulars: {} };
   run.bonus = config.mode === 'day' ? bonusGoal(config.day) : null; // (story days, solo or with friends)
@@ -1995,6 +1996,10 @@ function pause() {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) pause();
+});
+// 📊 the game closed mid-shift (the tab, or the app swiped away): counted as a shift left part-way
+addEventListener('pagehide', () => {
+  if (run && shift?.phase === 'running' && page === 'shift') shiftStat(true);
 });
 $('recipes').addEventListener('close', () => {
   if (!$('paused').open && page === 'shift') F.musicPause(false);
