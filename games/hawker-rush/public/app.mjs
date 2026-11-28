@@ -3,6 +3,7 @@ import * as Art from './art.mjs';
 import * as F from './feel.mjs';
 import * as Co from './coop.mjs';
 import { challengeUrl, parseChallenge, readBoard, startRankedRun, submitScore } from './competition.mjs';
+import { keepUpdated } from './updates.mjs';
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'hawker-rush-save';
@@ -172,6 +173,7 @@ function home({ focus = true } = {}) {
   if (F.musicPlaying() && !F.musicCalm()) F.musicStop();
   F.musicStart(true);
   show('home', 'Hawker Rush');
+  setTimeout(() => applyUpdate?.(), 0); // (a release that came out mid-shift goes in now)
   $('homeStall').innerHTML = stall(save.decor) +
     `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.cat('cheer')}${Art.dish('cup', ['kopi', 'milk'], { face: true })}${Art.person('uncle', 'happy')}</div>`;
   $('play').textContent = save.day > E.DAYS ? `Play endless day ${save.day}` : `Play day ${save.day}`;
@@ -1809,6 +1811,8 @@ for (const b of $('team').querySelectorAll('[data-emote]')) {
 }
 
 const challenge = parseChallenge(location.href);
+// (a newer release reloads itself in, but only from the home page with no co-op stall open)
+const applyUpdate = keepUpdated(() => page === 'home' && !Co.current() && !document.querySelector('dialog[open]'));
 const roomLink = new URL(location.href).searchParams.get('room');
 if (challenge) prepare(challenge.mode, challenge.spec.day, challenge);
 else if (roomLink && /^[A-Za-z0-9]{5}$/.test(roomLink)) coopPage(roomLink.toUpperCase());
