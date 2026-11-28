@@ -210,18 +210,21 @@ function mix(a, b, t) {
 }
 
 // fire under the stove line: glowing coals and flickering flames
+let flameBoost = 1; // (Faster stoves: taller, hotter flames)
 function flames(x0, x1, y, lit = true, n = 5) {
   if (!lit) return `<rect x="${x0}" y="${y - 3}" width="${x1 - x0}" height="6" rx="3" fill="#5a3a2a"/>`;
-  const w = (x1 - x0) / n;
+  const w = (x1 - x0) / n, f = flameBoost;
+  const blue = f > 1.4 ? `<g fill="#7fd0ff" opacity=".85">${Array.from({ length: n }, (_, k) => `<path d="M${x0 + k * w + w * .38} ${y} q${w * .12} -${4 * f} ${w * .24} 0 Z"/>`).join('')}</g>` : '';
   return `<rect x="${x0}" y="${y - 2}" width="${x1 - x0}" height="7" rx="3.5" fill="#ff6a2a" opacity=".85"/>` +
-    `<g class="flicker">${Array.from({ length: n }, (_, k) => `<path d="M${x0 + k * w + w * .15} ${y} q${w * .35} -${12 + (k % 2) * 5} ${w * .7} 0 Z" fill="#ff8a2a"/><path d="M${x0 + k * w + w * .3} ${y} q${w * .2} -${7 + (k % 2) * 3} ${w * .4} 0 Z" fill="#ffd23f"/>`).join('')}</g>`;
+    `<g class="flicker">${Array.from({ length: n }, (_, k) => `<path d="M${x0 + k * w + w * .15} ${y} q${w * .35} -${(12 + (k % 2) * 5) * f} ${w * .7} 0 Z" fill="#ff8a2a"/><path d="M${x0 + k * w + w * .3} ${y} q${w * .2} -${(7 + (k % 2) * 3) * f} ${w * .4} 0 Z" fill="#ffd23f"/>`).join('')}${blue}</g>`;
 }
 function coals(x0, x1, y) {
   return `<g>${Array.from({ length: Math.floor((x1 - x0) / 9) }, (_, k) => `<circle cx="${x0 + 5 + k * 9}" cy="${y + (k % 2) * 2}" r="4.2" fill="${k % 3 ? '#e2401c' : '#ff8a2a'}" class="${k % 3 ? '' : 'glow'}"/>`).join('')}</g>`;
 }
 
 /** A cooking station with its slots: null | {state: 'cooking'|'flip'|'ready'|'burnt', p, has}. Drawn big and lively. */
-export function station(id, slots) {
+export function station(id, slots, { fast = 0 } = {}) {
+  flameBoost = 1 + .22 * fast;
   const busy = slots.some(Boolean);
   const W = 110;
   if (id === 'toaster' || id === 'grill') {
@@ -235,9 +238,10 @@ export function station(id, slots) {
           (s.p > .4 || s.state !== 'cooking' ? `<path d="M${x + 4} 20 h${82 / slots.length - 16} M${x + 4} 27 h${82 / slots.length - 16}" stroke="#7a4a1a" stroke-width="2" opacity=".6"/>` : '') + '</g>';
       }
       const meat = s.state === 'burnt' ? '#1d120b' : s.state === 'ready' ? '#9a5222' : mix('#f0a090', '#9a5222', s.p);
-      const y = 15 + k * 12;
+      const n = slots.length, gap = n > 2 ? 24 / (n - 1) : 12, size = n > 2 ? 9 : 12;
+      const y = (n > 2 ? 9 : 15) + k * gap;
       return `<line x1="6" y1="${y}" x2="${W - 6}" y2="${y}" stroke="#e0c08a" stroke-width="2.4" stroke-linecap="round"/>` +
-        [0, 1, 2, 3, 4].map(j => `<rect x="${18 + j * 15}" y="${y - 6}" width="12" height="12" rx="5" fill="${meat}" stroke="#5a2c0e" stroke-width="1"/>`).join('');
+        [0, 1, 2, 3, 4].map(j => `<rect x="${18 + j * 15}" y="${y - size / 2}" width="${size}" height="${size}" rx="${size * .4}" fill="${meat}" stroke="#5a2c0e" stroke-width="1"/>`).join('');
     }).join('');
     return svg(W, 80, food +
       '<path d="M6 36 h98" stroke="#555" stroke-width="2.4"/>' +
@@ -249,9 +253,10 @@ export function station(id, slots) {
   if (id === 'pot') {
     const eggs = slots.map((s, k) => {
       if (!s) return '';
-      const x = 40 + k * 20;
+      const step = slots.length > 2 ? 54 / (slots.length - 1) : 20;
+      const x = 55 + (k - (slots.length - 1) / 2) * step;
       const c = s.state === 'burnt' ? '#8a7f70' : s.state === 'ready' ? '#fffdf4' : '#f6eedb';
-      return `<ellipse cx="${x}" cy="26" rx="8" ry="10" fill="${c}" stroke="#c9b88f" stroke-width="1.5" class="${s.state === 'cooking' ? 'bob' : ''}"/>`;
+      return `<ellipse cx="${x}" cy="26" rx="${slots.length > 2 ? 7 : 8}" ry="${slots.length > 2 ? 9 : 10}" fill="${c}" stroke="#c9b88f" stroke-width="1.5" class="${s.state === 'cooking' ? 'bob' : ''}"/>`;
     }).join('');
     const boiling = slots.some(s => s && s.state === 'cooking');
     return svg(W, 80, eggs +
@@ -426,6 +431,32 @@ export function stallTop(decor = {}, w = 400) {
   const sign = decor.sign ? `<g><rect x="${w / 2 - 92}" y="34" width="184" height="30" rx="10" fill="#4a2a1a" stroke="#ffd23f" stroke-width="3"/><text x="${w / 2}" y="55" text-anchor="middle" font-size="16" font-weight="900" fill="#ffd23f" font-family="system-ui">HAWKER RUSH</text></g>` : '';
   const neon = decor.neon ? `<text x="${w / 2}" y="84" text-anchor="middle" font-size="15" font-weight="900" fill="#ff5ad6" stroke="#ffd6f6" stroke-width=".6" font-family="system-ui" class="neon">★ OPEN ★</text>` : '';
   return svg(w, 92, stripes + lanterns + sign + neon, 'stall-top');
+}
+
+/** Things bought in the shop, standing in the stall: the standing fan, the tip jar, the kitchen timer. */
+export function props(upgrades = {}) {
+  const out = [];
+  if (upgrades.fan) {
+    const speed = [0, 1.1, .7, .45][upgrades.fan] ?? .45;
+    out.push(`<span class="prop prop-fan">${svg(40, 64, '<rect x="18" y="30" width="4" height="28" rx="2" fill="#8a96a0"/><ellipse cx="20" cy="60" rx="12" ry="3.5" fill="#6c7780"/>' +
+      '<circle cx="20" cy="20" r="17" fill="#e9f6fb" stroke="#8a96a0" stroke-width="2"/>' +
+      `<g class="spin" style="transform-origin:20px 20px;animation-duration:${speed}s">` + [0, 120, 240].map(a => `<ellipse cx="20" cy="11" rx="4.5" ry="9" fill="#7fc8e8" transform="rotate(${a} 20 20)"/>`).join('') + '</g>' +
+      '<circle cx="20" cy="20" r="3" fill="#5a6670"/>' +
+      '<path d="M5 20 a15 15 0 0 1 30 0 M7 27 a14 14 0 0 0 26 0" stroke="#b8c6ce" stroke-width="1" fill="none"/>')}</span>`);
+  }
+  if (upgrades.tipjar) {
+    const coinsIn = 2 + 3 * upgrades.tipjar;
+    out.push(`<span class="prop prop-jar">${svg(34, 44, '<path d="M7 12 h20 v4 q4 4 4 12 v8 q0 6 -6 6 h-16 q-6 0 -6 -6 v-8 q0 -8 4 -12 Z" fill="#dff3ffcc" stroke="#8ab8d0" stroke-width="2"/>' +
+      Array.from({ length: coinsIn }, (_, k) => `<ellipse cx="${10 + (k * 7) % 15}" cy="${38 - Math.floor(k / 3) * 4}" rx="4" ry="2" fill="#ffd23f" stroke="#c99400" stroke-width=".8"/>`).join('') +
+      '<rect x="6" y="6" width="22" height="7" rx="2" fill="#c98f5a"/><text x="17" y="30" text-anchor="middle" font-size="7" font-weight="900" fill="#4f7a90" font-family="system-ui">TIPS</text>')}</span>`);
+  }
+  if (upgrades.timer) {
+    out.push(`<span class="prop prop-timer">${svg(34, 36, '<circle cx="17" cy="20" r="14" fill="#ff8fb8" stroke="#c9507a" stroke-width="2"/><circle cx="17" cy="20" r="9.5" fill="#fff"/>' +
+      '<rect x="14" y="2" width="6" height="5" rx="2" fill="#c9507a"/>' +
+      '<g class="spin" style="transform-origin:17px 20px;animation-duration:6s"><path d="M17 20 v-7" stroke="#2b1a10" stroke-width="2" stroke-linecap="round"/></g>' +
+      (upgrades.timer > 1 ? '<circle cx="28" cy="9" r="3" fill="#ffd23f"/>' : ''))}</span>`);
+  }
+  return out.join('');
 }
 
 /** Behind the customers: the hawker centre (other stalls, hanging lamps, a ceiling fan, a crowd that grows in a rush).

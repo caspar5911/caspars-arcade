@@ -52,6 +52,7 @@
       <button id="openDaily" class="tile" type="button"><span aria-hidden="true" class="mode-icon">☀</span><span>Daily Rush<small id="dailyBest">A new shift every day</small></span></button>
       <button id="openShop" class="tile" type="button"><span aria-hidden="true" class="mode-icon">$</span><span>Shop<small id="wallet">$0</small></span></button>
       <button id="openBoards" class="tile" type="button"><span aria-hidden="true" class="mode-icon">★</span><span>Leaderboards<small>Weekly and daily scores</small></span></button>
+      <button id="openCollection" class="tile wide-tile" type="button"><span aria-hidden="true" class="mode-icon">🏆</span><span>Collection<small id="collectionNote">Dishes, customers and achievements</small></span></button>
     </div>
     <h2>Story days</h2>
     <div id="days" class="days"></div>
@@ -63,6 +64,7 @@
     <p id="introTip" class="intro"></p>
     <div id="introNew" class="recipes"></div>
     <p id="introGoals" class="goals"></p>
+    <p id="introBonus" class="goals bonus-goal" hidden></p>
     <button id="startShift" class="big" type="button">Open the stall</button>
     <button id="introBack" class="link" type="button">Back</button>
   </section>
@@ -70,6 +72,7 @@
   <section id="shift" aria-label="Stall" hidden>
     <div class="topline">
       <span class="money" id="money">$0</span>
+      <span id="bonusChip" class="bonus-chip" hidden></span>
       <div class="goalbar" id="goalbar" aria-hidden="true"><div id="goalFill" class="goal-fill"></div><div id="goalMarks"></div></div>
       <span id="servedCount" hidden></span>
       <time class="clock" id="clock">2:00</time>
@@ -89,6 +92,7 @@
       <div id="awning" class="awning" aria-hidden="true"></div>
       <div class="seats" id="seats" aria-label="Customers"></div>
       <p class="queue" id="queue" aria-live="polite"></p>
+      <div id="props" class="props" aria-hidden="true"></div>
       <div id="cat" class="mascot" aria-hidden="true"></div>
     </div>
     <div class="counter" id="counter" aria-label="Prep spots">
@@ -176,6 +180,19 @@
     <button id="boardRefresh" class="ghost" type="button">Refresh</button>
     <button id="boardsBack" class="link" type="button">Back</button>
   </section>
+  <section id="collection" class="page subpage" aria-labelledby="collectionTitle" hidden>
+    <h2 id="collectionTitle">Collection</h2>
+    <p class="intro" id="collectionIntro"></p>
+    <h3>Achievements</h3>
+    <ul id="achievementList" class="achievements"></ul>
+    <h3>Dish mastery</h3>
+    <p class="note">Serve a dish 10 times for bronze, 30 for silver, 75 for gold.</p>
+    <ul id="dishList" class="mastery"></ul>
+    <h3>Customer stickers</h3>
+    <p class="note">Serve someone to get their sticker; serve them 20 times for a gold one.</p>
+    <ul id="stickerList" class="stickers"></ul>
+    <button id="collectionBack" class="link" type="button">Back</button>
+  </section>
 
   <dialog id="recipes" class="overlay" aria-labelledby="recipeTitle">
     <div class="card">
@@ -198,6 +215,16 @@
         <button type="button" data-screen="sideways" aria-pressed="false"><i class="wide" aria-hidden="true"></i>Sideways</button>
       </div>
       <button id="quit" class="link" type="button">Quit this shift</button>
+    </div>
+  </dialog>
+  <dialog id="gift" class="overlay" aria-labelledby="giftTitle">
+    <div class="card gift-card">
+      <span class="gift-box" aria-hidden="true">🎁</span>
+      <h2 class="res-title" id="giftTitle">Daily gift</h2>
+      <p id="giftAmount" class="gift-amount"></p>
+      <ol id="giftWeek" class="gift-week" aria-label="This week's gifts"></ol>
+      <p id="giftNote" class="note"></p>
+      <button id="giftClose" class="big" type="button" autofocus>Collect</button>
     </div>
   </dialog>
   <dialog id="fsTip" class="overlay" aria-labelledby="fsTipTitle">

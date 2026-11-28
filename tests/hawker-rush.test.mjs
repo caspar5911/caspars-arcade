@@ -373,7 +373,7 @@ test('helping friends clear a day saves it; the next day opens once every day be
   assert.equal(save.day, 9);
 });
 
-test('co-op pay: what the shift would pay one cook, plus 50% for playing together', async () => {
+test('co-op pay: what the shift would pay one cook, plus a teamwork bonus (+50% / +60% / +75% for 2 / 3 / 4)', async () => {
   const { teamPay, crowdFor } = await import('../games/hawker-rush/public/rewards.mjs');
   // (the crowd size must match the rules: a team really gets that many times the customers)
   for (const players of [2, 3, 4]) {
@@ -381,8 +381,47 @@ test('co-op pay: what the shift would pay one cook, plus 50% for playing togethe
     const team = createShift({ day: 15, seed: 'pay', mode: 'day', players }).arrivals.length;
     assert.equal(team, Math.round(solo * crowdFor(players)));
   }
-  assert.equal(teamPay(467, 4), 250.18); // (467 / 2.8 = 166.79 solo pay, +50%)
-  assert.equal(teamPay(160, 2), 150); // (160 / 1.6 = 100 → 150)
+  assert.equal(teamPay(467, 4), 291.88); // (467 / 2.8 = 166.79 solo pay, +75%)
+  assert.equal(teamPay(220, 3), 160); // (220 / 2.2 = 100 → +60%)
+  assert.equal(teamPay(160, 2), 150); // (160 / 1.6 = 100 → +50%)
   assert.equal(teamPay(100, 1), 100); // (alone in a stall: no bonus)
   assert.equal(teamPay(0, 3), 0);
+});
+
+test('bonus goals: one for every story day, counted from what the shift served', async () => {
+  const { bonusGoal, goalProgress } = await import('../games/hawker-rush/public/goals.mjs');
+  for (let day = 1; day <= DAYS + 10; day++) {
+    const goal = bonusGoal(day);
+    assert.ok(goal.text && goal.reward >= 15 && goal.reward <= 45, `day ${day}`);
+    if (goal.kind === 'dish' && day <= DAYS) assert.ok(menuFor(day).includes(goal.dish), `day ${day}: ${goal.dish} is on the menu`);
+  }
+  const base = { served: 8, burnt: 0, lost: 0, passed: 0, bestCombo: 3, tips: 10, early: 0, dishes: { curryPuff: 2 }, perfect: 1 };
+  assert.deepEqual(goalProgress(bonusGoal(3), base), { done: false, short: '2/3' });
+  assert.equal(goalProgress(bonusGoal(3), { ...base, dishes: { curryPuff: 3 } }).done, true);
+  assert.equal(goalProgress(bonusGoal(4), base).done, false); // (no burns: only counts once the shift is over)
+  assert.equal(goalProgress(bonusGoal(4), { ...base, over: true }).done, true);
+  assert.equal(goalProgress(bonusGoal(4), { ...base, over: true, burnt: 1 }).done, false);
+});
+
+test('collections: dish medals, customer stickers and achievements each pay once', async () => {
+  const { collect, newAchievements, masteryOf } = await import('../games/hawker-rush/public/collection.mjs');
+  const c = { dishes: { kopi: 8 }, people: {} };
+  const news = collect(c, { kopi: 25, teh: 3 }, { auntie: 1 });
+  assert.deepEqual(news.map(n => n.kind + ':' + n.id + (n.tier ? ':' + n.tier.name : '')), ['mastery:kopi:Bronze', 'mastery:kopi:Silver', 'sticker:auntie']);
+  assert.equal(c.dishes.kopi, 33);
+  assert.equal(masteryOf(33), 2);
+  assert.deepEqual(collect(c, {}, { auntie: 1 }), []); // (a sticker comes once)
+  assert.deepEqual(newAchievements({ first: true }, { first: true, combo10: true }).map(a => a.id), ['combo10']);
+});
+
+test('the daily gift: once a day, growing with a streak of days in a row', async () => {
+  const { claimGift, GIFTS } = await import('../games/hawker-rush/public/gift.mjs');
+  const first = claimGift(null, '2026-11-28');
+  assert.deepEqual(first, { gift: { last: '2026-11-28', streak: 1 }, amount: GIFTS[0], streak: 1 });
+  assert.equal(claimGift(first.gift, '2026-11-28'), null);
+  const next = claimGift(first.gift, '2026-11-29');
+  assert.equal(next.streak, 2);
+  assert.equal(claimGift({ last: '2026-11-30', streak: 6 }, '2026-12-01').amount, GIFTS[6]); // (across months)
+  assert.equal(claimGift({ last: '2026-12-01', streak: 7 }, '2026-12-02').amount, GIFTS[0]); // (a new week)
+  assert.equal(claimGift({ last: '2026-11-26', streak: 5 }, '2026-11-28').streak, 1); // (missed a day)
 });
