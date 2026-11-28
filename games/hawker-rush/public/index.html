@@ -41,6 +41,11 @@
       <p class="intro">Brew kopi, toast kaya bread and serve the lunch crowd at your own hawker stall.</p>
     </div>
     <button id="play" class="big" type="button">Play day 1</button>
+    <div class="screen-pick" role="group" aria-label="Screen">
+      <span>Screen</span>
+      <button type="button" data-screen="upright" aria-pressed="true"><i class="tall" aria-hidden="true"></i>Upright</button>
+      <button type="button" data-screen="sideways" aria-pressed="false"><i class="wide" aria-hidden="true"></i>Sideways</button>
+    </div>
     <button id="openCoop" class="tile coop-tile" type="button"><span aria-hidden="true" class="mode-icon">👫</span><span>Play with friends<small>Share one stall, live, on your phones</small></span></button>
     <div class="mode-grid">
       <button id="openSpeed" class="tile" type="button"><span aria-hidden="true" class="mode-icon">◷</span><span>Speed Run<small id="speedBest">Serve 15 customers</small></span></button>
@@ -187,6 +192,11 @@
       <h2 id="pauseTitle" class="res-title">Stall paused</h2>
       <button id="resume" class="big" type="button" autofocus>Resume shift</button>
       <button id="pausedRecipes" class="ghost" type="button">Recipes</button>
+      <div class="screen-pick" role="group" aria-label="Screen">
+        <span>Screen</span>
+        <button type="button" data-screen="upright" aria-pressed="true"><i class="tall" aria-hidden="true"></i>Upright</button>
+        <button type="button" data-screen="sideways" aria-pressed="false"><i class="wide" aria-hidden="true"></i>Sideways</button>
+      </div>
       <button id="quit" class="link" type="button">Quit this shift</button>
     </div>
   </dialog>
@@ -197,7 +207,7 @@
       <ol class="steps-list">
         <li>Tap the <b>Share</b> button <span aria-hidden="true">(the square with an arrow)</span></li>
         <li>Choose <b>Add to Home Screen</b></li>
-        <li>Open <b>Hawker Rush</b> from your home screen: it fills the whole screen. Turn your phone sideways!</li>
+        <li>Open <b>Hawker Rush</b> from your home screen: it fills the whole screen, upright or sideways.</li>
       </ol>
       <button id="fsTipClose" class="big" type="button" autofocus>Got it</button>
     </div>
@@ -207,7 +217,7 @@
       <span class="phone" aria-hidden="true">📱</span>
       <p>Turn your phone sideways</p>
       <small>The whole kitchen fits, stove and all. The shift waits for you.</small>
-      <button id="upright" class="ghost" type="button">Play upright anyway</button>
+      <button id="upright" class="ghost" type="button">Play upright instead</button>
     </div>
   </div>
   <script type="module" src="./app.mjs"></script>

@@ -651,15 +651,106 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
   .pop { animation: none !important; transform: translateX(-50%); }
 }
 
-/* ------------------------------------------------ sideways (the main way to play): one long stall, like standing
-   behind a real hawker counter. Customers queue along the whole top; under them the counter where dishes are built
-   (with the tip board beside it); then the kitchen: the stove line against the tiled back wall, and the ingredient
-   trays on the steel worktop in front, grouped by dish. */
+/* ------------------------------------------------ the kitchen scene, both ways round: like standing behind a real
+   hawker counter. Customers along the top (their orders in picture bubbles), the counter where dishes are built, the
+   stove line against the tiled back wall, and the ingredient trays on the steel worktop, grouped by dish. */
+body.in-shift .hud { min-height: 0; padding-block: max(2px, env(safe-area-inset-top)) 2px; }
+body.in-shift .hud .icon { min-width: 40px; min-height: 40px; }
+body.in-shift .hud-sub { display: none; }
+#shift .topline { z-index: 4; min-height: 26px; padding: 1px 12px; border-radius: 999px; background: #2b1a12e0; box-shadow: 0 2px 6px #0005; }
+#shift .money { font-size: 1.05rem; }
+#shift .clock { font-size: 1rem; }
+#shift .scene { min-height: 0; border-radius: 14px 14px 0 0; }
+#shift .seats { padding-top: 30px; height: 100%; align-items: stretch; }
+#shift .seat { min-height: 0; }
+#shift .portrait { flex: 1 1 0; min-height: 26px; height: auto; max-height: 150px; }
+#shift .portrait .person { max-width: 140px; }
+#shift .orders {
+  position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 0 2px;
+  width: auto; max-width: 100%; margin-bottom: 6px; padding: 2px 5px;
+  border-radius: 12px; background: #fffaf0; box-shadow: 0 2px 0 #d8b98c, 0 3px 6px #0003;
+}
+#shift .orders:empty { display: none; }
+#shift .orders::after { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #fffaf0; border-bottom: 0; content: ''; }
+#shift .orders .order { container-type: normal; min-width: 0; min-height: 0; padding: 0; border: 0; background: none; }
+#shift .order span { display: none; }
+#shift .order svg { width: var(--order, 26px); height: calc(var(--order, 26px) * .9); }
+#shift .order.done { opacity: .3; text-decoration: none; }
+#shift .seat.eligible .orders { box-shadow: 0 0 0 3px var(--green), 0 3px 6px #0003; }
+#shift .mascot { bottom: 4px; }
+#shift .counter { border-radius: 0; padding: 5px 8px 6px; }
+#shift .prep-art { height: var(--prep, 40px); }
+
+.stove {
+  gap: 6px; padding: 5px 8px; border-radius: 0;
+  background:
+    linear-gradient(#0000 calc(100% - 8px), #8d949c calc(100% - 8px) calc(100% - 4px), #5f656c calc(100% - 4px)),
+    repeating-linear-gradient(90deg, #0000 0 21px, #a9cfc5 21px 22px),
+    repeating-linear-gradient(0deg, #0000 0 21px, #a9cfc5 21px 22px),
+    #d9efe9;
+  box-shadow: none;
+}
+.stove .station {
+  padding: 2px 2px 3px; border: 2px solid #6d737b; border-radius: 10px 10px 4px 4px;
+  background: radial-gradient(ellipse at 50% 92%, #7a341a88, transparent 70%), linear-gradient(#3b3936, #262422);
+  box-shadow: 0 3px 0 #1d1b19;
+}
+.stove .station-picture svg { height: var(--stove, 44px); }
+.stove .station-info { color: #f1e7d4; }
+.stove .station-track { width: 76%; }
+
+#shift .kitchen { gap: 0; padding: 0; border: 0; border-radius: 0 0 14px 14px; background: none; overflow: hidden; }
+.lines {
+  justify-content: center; gap: 5px 6px; padding: 5px 8px 7px; border-radius: 0 0 14px 14px;
+  background: linear-gradient(#c8ced4, #a7afb7); box-shadow: inset 0 3px 0 #e6eaee, inset 0 -5px 0 #7c848c;
+}
+.line, .line.wide {
+  flex-basis: calc(var(--n) * 36px + 24px); max-width: calc(var(--n) * 120px + 30px); gap: 3px; padding: 3px 4px 3px 3px;
+  border: 0; border-radius: 9px; background: #6e767f !important;
+  box-shadow: inset 0 2px 3px #0006, 0 1px 0 #ffffff88;
+}
+.line-label { width: 20px; border-radius: 7px; font-size: .95rem; background: var(--fam, #ffffff22); }
+.line.cupfam { --fam: #5d8db3; } .line.platefam { --fam: #b07a45; } .line.bowlfam { --fam: #5aa39a; }
+.line.pastryfam { --fam: #d4a23a; } .line.doughfam { --fam: #cdb48a; }
+/* each ingredient is a tray of food sunk into the worktop */
+.line .stock {
+  position: relative; min-height: var(--tray, 46px); padding: 1px 1px 11px;
+  border: 1px solid #4d545b; border-radius: 7px; color: #3a2a1f;
+  background: linear-gradient(#eef1f3, #cdd3d8); box-shadow: inset 0 3px 4px #0000002e;
+}
+.line .stock[data-stock="cup"], .line .stock[data-stock="plate"], .line .stock[data-stock="bowl"],
+.line .stock[data-stock="pastry"], .line .stock[data-stock="dough"] {
+  border-color: #6b4528; background: linear-gradient(#e2b27c, #c98f5a); box-shadow: inset 0 -3px 0 #a26a3a;
+}
+.line .stock svg { width: min(92%, 64px); height: var(--tray-art, 28px); }
+.line .stock span {
+  position: absolute; left: 1px; right: 1px; bottom: 1px; display: block; padding: 0 1px;
+  border-radius: 0 0 6px 6px; background: #ffffffb0; font-size: clamp(.48rem, 17cqi, .7rem) !important; line-height: 10px;
+}
+.lines.roomy .line .stock { min-height: var(--tray-roomy, 84px); font-size: .9rem; }
+.lines.roomy .line .stock svg { height: calc(var(--tray-roomy, 84px) * .55); }
+
+/* upright (the default): one screen tall, the customers on top and the kitchen underneath */
+@media not all and (orientation: landscape) and (min-aspect-ratio: 5/4) {
+  #shift {
+    --order: clamp(20px, 6.5vw, 30px); --prep: clamp(34px, 6vh, 56px); --stove: clamp(36px, 7vh, 64px);
+    --tray: clamp(42px, 7vh, 70px); --tray-art: clamp(24px, 4.4vh, 44px); --tray-roomy: clamp(70px, 12vh, 110px);
+    height: calc(100vh - 49px);
+    height: calc(100dvh - 49px);
+    min-height: 0;
+    padding-bottom: max(5px, env(safe-area-inset-bottom));
+  }
+  #shift .topline { position: relative; align-self: center; width: calc(100% - 12px); margin: 4px 0 -32px; }
+  #shift .scene { flex: 1 1 auto; min-height: 120px; }
+  #shift .counter { border-radius: 0; }
+  #shift .hint { min-height: 0; margin: 0; padding: 4px 6px; font-size: .76rem; line-height: 1.2; }
+  #shift .kitchen { flex: none; }
+  #shift .queue { position: absolute; z-index: 3; right: 6px; bottom: 12px; padding: 1px 8px; border-radius: 9px; font-size: .66rem; }
+}
+
+/* sideways: one long stall. The counter sits beside the stove line; the tip and the queue note ride in the top bar */
 @media (orientation: landscape) and (min-aspect-ratio: 5/4) {
-  body.in-shift .hud { max-width: none; min-height: 0; padding: max(2px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 2px max(10px, env(safe-area-inset-left)); }
-  body.in-shift .hud .icon { min-width: 40px; min-height: 40px; }
-  body.in-shift .hud-sub { display: none; }
-  /* the tip rides in the top bar, between the day and the buttons */
+  body.in-shift .hud { max-width: none; padding-inline: max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-left)); }
   body.in-shift .hud-mid { display: flex; align-items: center; gap: 12px; }
   body.in-shift #hudTitle { flex: none; }
   body.in-shift .hud-hint {
@@ -669,8 +760,13 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
   }
   body.in-shift .hud-hint:empty { display: none; }
   #shift .hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; padding: 0; min-height: 0; }
+  /* (the queue note rides in the top bar too; this one stays for screen readers, and for "walked past" to float from) */
+  #shift .queue { position: absolute; right: 30px; bottom: 30px; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  body.in-shift .hud-queue { display: block; flex: none; max-width: 24%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: clamp(.62rem, 1.5vw, .78rem); font-weight: 750; }
 
   #shift {
+    --order: clamp(22px, 7.5vh, 44px); --prep: clamp(28px, 9vh, 70px); --stove: clamp(32px, 10vh, 120px);
+    --tray: clamp(40px, 11.5vh, 100px); --tray-art: clamp(22px, 7.5vh, 66px); --tray-roomy: clamp(56px, 18vh, 120px);
     display: grid;
     width: 100%;
     max-width: 1280px;
@@ -684,13 +780,8 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
   }
   #shift:has(#stove[hidden]) { grid-template-areas: "scene scene" "counter counter" "lines lines"; }
   #shift .kitchen { display: contents; }
-
   /* money, the star bar and the clock ride on the awning (with the co-op cheers beside them) */
-  #shift .topline {
-    grid-area: scene; align-self: start; justify-self: center; z-index: 4;
-    width: min(620px, calc(100% - 16px)); min-height: 26px; margin-top: 4px; padding: 1px 12px;
-    border-radius: 999px; background: #2b1a12e0; box-shadow: 0 2px 6px #0005;
-  }
+  #shift .topline { grid-area: scene; align-self: start; justify-self: center; width: min(620px, calc(100% - 16px)); margin-top: 4px; }
   #shift:has(#team:not([hidden])) .topline { justify-self: start; width: min(560px, calc(100% - 230px)); margin-left: 8px; }
   #shift #team {
     grid-area: scene; align-self: start; justify-self: end; z-index: 5; min-height: 0; margin: 3px 8px 0; padding: 0 4px;
@@ -698,94 +789,15 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
   }
   #shift #team .team-names { display: none; }
   #shift #team .emotes button { min-width: 34px; min-height: 30px; }
-  #shift .money { font-size: 1.05rem; }
-  #shift .clock { font-size: 1rem; }
-
-  #shift .scene { grid-area: scene; min-height: 0; border-radius: 14px 14px 0 0; }
-  #shift .seats { padding-top: 30px; height: 100%; align-items: stretch; }
-  #shift .seat { min-height: 0; }
-  .portrait { flex: 1 1 0; min-height: 26px; height: auto; max-height: 150px; }
-  .portrait .person { max-width: 140px; }
-  /* what each customer wants: a speech bubble of pictures */
-  .orders {
-    position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 0 2px;
-    width: auto; max-width: 100%; margin-bottom: 6px; padding: 2px 6px;
-    border-radius: 12px; background: #fffaf0; box-shadow: 0 2px 0 #d8b98c, 0 3px 6px #0003;
-  }
-  .orders:empty { display: none; }
-  .orders::after { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #fffaf0; border-bottom: 0; content: ''; }
-  .orders .order, .seats.many .order { container-type: normal; min-width: 0; min-height: 0; padding: 0; border: 0; background: none; }
-  .order span { display: none; }
-  .order svg, .seats.many .order svg { width: clamp(22px, 7.5vh, 44px); height: clamp(20px, 7vh, 40px); }
-  .order.done { opacity: .3; text-decoration: none; }
-  .seat.eligible .orders { box-shadow: 0 0 0 3px var(--green), 0 3px 6px #0003; }
-  /* (the queue note rides in the top bar too; this one stays for screen readers, and for "walked past" to float from) */
-  #shift .queue { position: absolute; right: 30px; bottom: 30px; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
-  body.in-shift .hud-queue { display: block; flex: none; max-width: 24%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: clamp(.62rem, 1.5vw, .78rem); font-weight: 750; }
-  .mascot { bottom: 4px; }
-
-  /* the front counter, where dishes are built, beside the stove line */
-  #shift .counter {
-    grid-area: counter; grid-template-columns: repeat(var(--spots, 3), minmax(58px, 120px)); justify-content: center;
-    border-radius: 0; padding: 5px 8px 6px;
-  }
+  #shift .scene { grid-area: scene; }
+  #shift .counter { grid-area: counter; grid-template-columns: repeat(var(--spots, 3), minmax(58px, 120px)); justify-content: center; }
   /* (a big co-op counter: narrower spots, so the stove line keeps its room) */
   #shift .counter:has(.prep:nth-child(5)) { grid-template-columns: repeat(var(--spots, 5), minmax(42px, 96px)); gap: 3px; padding-inline: 4px; }
   #shift .counter:has(.prep:nth-child(5)) .prep-name { font-size: .56rem; }
-  .prep-art { height: clamp(28px, 9vh, 70px); }
   .prep-name { font-size: clamp(.6rem, 1.8vh, .84rem); }
-
-  /* the stove line against the tiled back wall */
-  .stove {
-    grid-area: stove; align-content: stretch; gap: 6px; padding: 5px 8px; border-radius: 0;
-    border: 1px solid #ad754b; border-left: 0;
-    background:
-      linear-gradient(#0000 calc(100% - 8px), #8d949c calc(100% - 8px) calc(100% - 4px), #5f656c calc(100% - 4px)),
-      repeating-linear-gradient(90deg, #0000 0 21px, #a9cfc5 21px 22px),
-      repeating-linear-gradient(0deg, #0000 0 21px, #a9cfc5 21px 22px),
-      #d9efe9;
-    box-shadow: none;
-  }
-  .stove .station {
-    padding: 2px 2px 3px; border: 2px solid #6d737b; border-radius: 10px 10px 4px 4px;
-    background: radial-gradient(ellipse at 50% 92%, #7a341a88, transparent 70%), linear-gradient(#3b3936, #262422);
-    box-shadow: 0 3px 0 #1d1b19;
-  }
-  .stove .station-picture svg { height: clamp(32px, 10vh, 120px); }
-  .stove .station-info { color: #f1e7d4; }
-  .stove .station-track { width: 76%; }
-
-  /* the ingredient trays on the steel worktop, grouped by dish */
-  .lines {
-    grid-area: lines; gap: 5px 8px; padding: 5px 10px 7px; border-radius: 0 0 14px 14px;
-    background: linear-gradient(#c8ced4, #a7afb7); box-shadow: inset 0 3px 0 #e6eaee, inset 0 -5px 0 #7c848c;
-  }
-  .lines { justify-content: center; }
-  .line, .line.wide {
-    flex-basis: calc(var(--n) * 40px + 24px); max-width: calc(var(--n) * 120px + 30px); gap: 4px; padding: 3px 4px 3px 3px;
-    border: 0; border-radius: 9px; background: #6e767f !important;
-    box-shadow: inset 0 2px 3px #0006, 0 1px 0 #ffffff88;
-  }
-  .line-label { width: 20px; border-radius: 7px; font-size: .95rem; background: var(--fam, #ffffff22); }
-  .line.cupfam { --fam: #5d8db3; } .line.platefam { --fam: #b07a45; } .line.bowlfam { --fam: #5aa39a; }
-  .line.pastryfam { --fam: #d4a23a; } .line.doughfam { --fam: #cdb48a; }
-  /* each ingredient is a tray of food sunk into the worktop */
-  .line .stock {
-    position: relative; min-height: clamp(40px, 11.5vh, 100px); padding: 1px 1px 11px;
-    border: 1px solid #4d545b; border-radius: 7px; color: #3a2a1f;
-    background: linear-gradient(#eef1f3, #cdd3d8); box-shadow: inset 0 3px 4px #0000002e;
-  }
-  .line .stock[data-stock="cup"], .line .stock[data-stock="plate"], .line .stock[data-stock="bowl"],
-  .line .stock[data-stock="pastry"], .line .stock[data-stock="dough"] {
-    border-color: #6b4528; background: linear-gradient(#e2b27c, #c98f5a); box-shadow: inset 0 -3px 0 #a26a3a;
-  }
-  .line .stock svg { width: min(92%, 64px); height: clamp(22px, 7.5vh, 66px); }
-  .line .stock span {
-    position: absolute; left: 1px; right: 1px; bottom: 1px; display: block; padding: 0 1px;
-    border-radius: 0 0 6px 6px; background: #ffffffb0; font-size: clamp(.48rem, 17cqi, .7rem) !important; line-height: 10px;
-  }
-  .lines.roomy .line .stock { min-height: clamp(56px, 18vh, 120px); font-size: .9rem; }
-  .lines.roomy .line .stock svg { height: clamp(34px, 11vh, 70px); }
+  .stove { grid-area: stove; align-content: stretch; border: 1px solid #ad754b; border-left: 0; }
+  .lines { grid-area: lines; gap: 5px 8px; padding-inline: 10px; }
+  .line, .line.wide { flex-basis: calc(var(--n) * 40px + 24px); gap: 4px; }
   #rotate { display: none !important; }
 }
 @media (orientation: landscape) and (min-aspect-ratio: 5/4) and (max-width: 720px) {
@@ -801,7 +813,7 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 #rotate p { margin: 12px 0; font-weight: 800; font-size: 1.1rem; }
 #rotate small { display: block; color: var(--muted); margin-bottom: 14px; }
 @media (orientation: portrait) {
-  body.in-shift:not(.upright) #rotate { display: grid; }
+  body.in-shift.want-sideways #rotate { display: grid; }
 }
 
 #fullscreen svg, #book svg, #pause svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
@@ -814,3 +826,11 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 /* an order too narrow for its name shows just the dish picture */
 .order { container-type: inline-size; }
 @container (max-width: 62px) { .order span { display: none; } }
+
+/* upright or sideways: the player's choice (home page and pause card) */
+.screen-pick { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 10px 0 4px; color: var(--muted); font-size: .85rem; font-weight: 750; }
+.screen-pick button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 10px; background: #2b2018; color: var(--cream); font-weight: 800; }
+.screen-pick button[aria-pressed="true"] { border-color: var(--gold); background: #4a3418; color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.screen-pick i { display: inline-block; border: 2px solid currentColor; border-radius: 3px; }
+.screen-pick i.tall { width: 11px; height: 18px; }
+.screen-pick i.wide { width: 18px; height: 11px; }

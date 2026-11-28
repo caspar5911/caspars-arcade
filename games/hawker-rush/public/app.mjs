@@ -784,23 +784,55 @@ function finishCoop() {
   openDialog('results');
 }
 
-const upright = () => matchMedia('(orientation: portrait)').matches && !document.body.classList.contains('upright');
+// 📱 upright or sideways: the player picks (upright unless they choose sideways). Full screen holds the phone that way
+// where the browser allows it; sideways players holding the phone upright get a "turn your phone" card.
+const SCREEN_KEY = 'hawker-rush-screen';
+let screenPref = 'upright';
+try {
+  if (localStorage.getItem(SCREEN_KEY) === 'sideways') screenPref = 'sideways';
+} catch {
+  // (no storage: upright)
+}
+const needsTurning = () => screenPref === 'sideways' && matchMedia('(orientation: portrait)').matches;
 
-/** On phones: go full screen and sideways when a shift starts (where the browser allows it; iPhones don't). */
-async function goSideways() {
+async function lockScreen() {
+  if (!matchMedia('(pointer: coarse)').matches) return;
+  try {
+    await screen.orientation?.lock?.(screenPref === 'sideways' ? 'landscape' : 'portrait');
+  } catch {
+    // (only allowed in full screen, and never on iPhones)
+  }
+}
+
+function setScreen(pref, remember = true) {
+  screenPref = pref === 'sideways' ? 'sideways' : 'upright';
+  document.body.classList.toggle('want-sideways', screenPref === 'sideways');
+  for (const b of document.querySelectorAll('[data-screen]')) b.setAttribute('aria-pressed', String(b.dataset.screen === screenPref));
+  if (remember) {
+    try {
+      localStorage.setItem(SCREEN_KEY, screenPref);
+    } catch {
+      // (just for this visit)
+    }
+    if (document.fullscreenElement || installed()) lockScreen();
+  }
+}
+
+/** On phones: go full screen (held the chosen way) when a shift starts, where the browser allows it; iPhones don't. */
+async function goFullscreen() {
   if (!matchMedia('(pointer: coarse)').matches) return;
   try {
     if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-    await screen.orientation?.lock?.('landscape');
   } catch {
-    // (not allowed here: the "turn your phone" card asks instead)
+    // (not allowed here)
   }
+  await lockScreen();
   showFullscreen();
 }
 
 function playing() {
   if (run?.coop?.role === 'guest') return Boolean(shift?.phase === 'running' && !document.hidden); // (the host keeps time)
-  return run && shift?.phase === 'running' && !upright() && !$('paused').open && !$('recipes').open && !document.hidden;
+  return run && shift?.phase === 'running' && !needsTurning() && !$('paused').open && !$('recipes').open && !document.hidden;
 }
 
 function tutorialWaiting() {
@@ -1691,7 +1723,7 @@ $('fullscreen').addEventListener('click', async () => {
   } else if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
     try {
       await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-      if (matchMedia('(pointer: coarse)').matches) await screen.orientation?.lock?.('landscape');
+      await lockScreen();
     } catch {
       // (refused: nothing changes)
     }
@@ -1701,22 +1733,12 @@ $('fullscreen').addEventListener('click', async () => {
 $('fsTipClose').addEventListener('click', () => closeDialog('fsTip'));
 document.addEventListener('fullscreenchange', showFullscreen);
 showFullscreen();
-$('startShift').addEventListener('click', goSideways);
-$('coopGo').addEventListener('click', goSideways);
-$('coopJoin').addEventListener('click', goSideways);
-$('upright').addEventListener('click', () => {
-  document.body.classList.add('upright');
-  try {
-    localStorage.setItem('hawker-rush-upright', '1');
-  } catch {
-    // (asked again next visit)
-  }
-});
-try {
-  if (localStorage.getItem('hawker-rush-upright')) document.body.classList.add('upright');
-} catch {
-  // (no storage)
-}
+$('startShift').addEventListener('click', goFullscreen);
+$('coopGo').addEventListener('click', goFullscreen);
+$('coopJoin').addEventListener('click', goFullscreen);
+$('upright').addEventListener('click', () => setScreen('upright'));
+for (const b of document.querySelectorAll('[data-screen]')) b.addEventListener('click', () => setScreen(b.dataset.screen));
+setScreen(screenPref, false);
 $('coopCreate').addEventListener('click', () => coopOpen(null));
 $('coopJoin').addEventListener('click', () => coopOpen($('coopCode').value));
 $('coopCode').addEventListener('keydown', event => { if (event.key === 'Enter') coopOpen($('coopCode').value); });
