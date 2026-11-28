@@ -654,6 +654,11 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #9a7448; 
 /* ------------------------------------------------ the kitchen scene, both ways round: like standing behind a real
    hawker counter. Customers along the top (their orders in picture bubbles), the counter where dishes are built, the
    stove line against the tiled back wall, and the ingredient trays on the steel worktop, grouped by dish. */
+/* during a shift the page is exactly one screen: the top bar (as tall as the phone's notch or status bar makes it)
+   and the stall filling the rest, never a fixed guess at the bar's height */
+body.in-shift { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+body.in-shift > .hud { flex: none; width: 100%; }
+body.in-shift #shift { flex: 1 1 auto; height: auto !important; min-height: 0; }
 body.in-shift .hud { min-height: 0; padding-block: max(2px, env(safe-area-inset-top)) 2px; }
 body.in-shift .hud .icon { min-width: 40px; min-height: 40px; }
 body.in-shift .hud-sub { display: none; }
