@@ -2017,6 +2017,29 @@ $('startShift').addEventListener('click', goFullscreen);
 $('coopGo').addEventListener('click', goFullscreen);
 $('coopJoin').addEventListener('click', goFullscreen);
 $('upright').addEventListener('click', () => setScreen('upright'));
+
+// 🎨 colour themes: the page, its panels and the stall's wall and counter (the food and the people stay as they are)
+const THEMES = ['kopi', 'pandan', 'ocean', 'sakura', 'night'];
+function setTheme(theme, remember = true) {
+  const pick = THEMES.includes(theme) ? theme : 'kopi';
+  if (pick === 'kopi') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = pick;
+  for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === pick));
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--ground').trim());
+  if (remember) {
+    try {
+      localStorage.setItem('hawker-rush-theme', pick);
+    } catch {
+      // (just for this visit)
+    }
+  }
+}
+for (const b of document.querySelectorAll('[data-theme-pick]')) b.addEventListener('click', () => setTheme(b.dataset.themePick));
+try {
+  setTheme(localStorage.getItem('hawker-rush-theme') ?? 'kopi', false);
+} catch {
+  setTheme('kopi', false);
+}
 // (menus held sideways where the phone can't be held upright for us: ask, but it can be waved away for this visit)
 $('keepSideways').addEventListener('click', () => document.body.classList.add('menus-sideways'));
 if (installed()) lockScreen(); // (the installed app opens on the menus: upright)
