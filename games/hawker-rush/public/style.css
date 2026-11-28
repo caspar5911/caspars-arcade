@@ -658,7 +658,10 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--lin
    stove line against the tiled back wall, and the ingredient trays on the steel worktop, grouped by dish. */
 /* during a shift the page is exactly one screen: the top bar (as tall as the phone's notch or status bar makes it)
    and the stall filling the rest, never a fixed guess at the bar's height */
-body.in-shift { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+body.in-shift { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; overscroll-behavior: none; }
+/* (the height the phone really shows, measured by the game: some browsers count the address bar in 100vh / 100dvh) */
+:root[data-app-h] body.in-shift { height: var(--app-h); }
+:root[data-app-h]:has(body.in-shift) { overscroll-behavior: none; }
 body.in-shift > .hud { flex: none; width: 100%; }
 body.in-shift #shift { flex: 1 1 auto; height: auto !important; min-height: 0; }
 body.in-shift .hud { min-height: 0; padding-block: max(2px, env(safe-area-inset-top)) 2px; }
