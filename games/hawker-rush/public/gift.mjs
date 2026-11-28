@@ -9,7 +9,7 @@ const dayBefore = date => {
 
 /** Today's gift, if not opened yet: { gift: the new state, amount, streak }; null if already opened today. */
 export function claimGift(gift, today) {
-  if (gift?.last === today) return null;
+  if (gift?.last && gift.last >= today) return null; // (opened today, or the clock was wound back: no extra gifts)
   const streak = gift?.last === dayBefore(today) ? (gift.streak ?? 0) + 1 : 1;
   return { gift: { last: today, streak }, amount: GIFTS[(streak - 1) % GIFTS.length], streak };
 }

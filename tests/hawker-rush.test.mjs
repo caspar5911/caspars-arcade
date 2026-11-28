@@ -419,6 +419,7 @@ test('the daily gift: once a day, growing with a streak of days in a row', async
   const first = claimGift(null, '2026-11-28');
   assert.deepEqual(first, { gift: { last: '2026-11-28', streak: 1 }, amount: GIFTS[0], streak: 1 });
   assert.equal(claimGift(first.gift, '2026-11-28'), null);
+  assert.equal(claimGift({ last: '2026-12-05', streak: 3 }, '2026-11-28'), null); // (winding the clock back gives nothing)
   const next = claimGift(first.gift, '2026-11-29');
   assert.equal(next.streak, 2);
   assert.equal(claimGift({ last: '2026-11-30', streak: 6 }, '2026-12-01').amount, GIFTS[6]); // (across months)
