@@ -132,8 +132,8 @@ function stopShift() {
   $('fx').replaceChildren();
 }
 
-function stall(decor) {
-  return Art.stallTop(decor) + (decor.plants
+function stall(decor, w) {
+  return Art.stallTop(decor, w) + (decor.plants
     ? '<span class="plant left">🪴</span><span class="plant right">🪴</span>' : '');
 }
 
@@ -402,7 +402,7 @@ function renderNext() {
     if (!target) continue;
     for (const ing of E.DISHES[target].has) if (!item.has.includes(ing)) next.add(E.INGREDIENTS[ing].cooked ?? ing);
   }
-  for (const el of $('lines').querySelectorAll('[data-stock], [data-station]')) {
+  for (const el of $('kitchen').querySelectorAll('[data-stock], [data-station]')) {
     el.classList.toggle('next', next.has(el.dataset.stock ?? el.dataset.station));
   }
 }
@@ -424,6 +424,20 @@ function buildGoals() {
   }
 }
 
+/** The awning and the hawker centre behind the customers, drawn as wide as the stall front (sideways it's a long one). */
+function dressStall() {
+  const scene = $('shift').querySelector('.scene');
+  const w = scene.clientWidth, h = scene.clientHeight;
+  const sideways = w > 1.8 * h && w > 500;
+  const key = sideways ? `${Math.round(w / 40)}:${Math.round(h / 20)}` : 'upright';
+  if (scene.dataset.dressed === key + JSON.stringify(save.decor)) return;
+  scene.dataset.dressed = key + JSON.stringify(save.decor);
+  $('awning').innerHTML = stall(save.decor, sideways ? Math.max(400, Math.round(w * 1.55)) : 400);
+  // (drawn no bigger than 1.2×, so on a big screen the hawker centre keeps a sensible size behind the customers)
+  $('backdrop').innerHTML = Art.backdrop(sideways ? Math.max(400, Math.round(w / Math.min(1.2, Math.max(.3, h / 160)))) : 400);
+}
+addEventListener('resize', () => { if (run) dressStall(); });
+
 function startShift() {
   if (!pending || (page !== 'intro' && !pending.coop)) return;
   const config = pending;
@@ -437,8 +451,6 @@ function startShift() {
       ? startRankedRun(config.mode, config.key) : Promise.resolve(null),
   };
   hintOverride = null;
-  $('awning').innerHTML = stall(save.decor);
-  $('backdrop').innerHTML = Art.backdrop();
   $('cat').html = null;
   $('fx').replaceChildren();
   show('shift', run.title, run.key ?? '');
@@ -447,6 +459,7 @@ function startShift() {
   if (run.coop) renderTeam();
   run.prep = buildCounter();
   buildKitchen();
+  dressStall();
   buildGoals();
   F.musicStop();
   F.sfx.start();
@@ -1058,7 +1071,9 @@ function renderHint() {
   else if (run.mode !== 'speed' && shift.next >= shift.arrivals.length) {
     message = 'Last customers! Serve them all to close early for a bonus.';
   }
-  setText($('hint'), hintOverride && shift.t < hintOverride.until ? hintOverride.text : guided ?? message);
+  const text = hintOverride && shift.t < hintOverride.until ? hintOverride.text : guided ?? message;
+  setText($('hint'), text);
+  setText($('hudHint'), text); // (sideways, the tip rides in the top bar)
 }
 
 function render() {
@@ -1076,6 +1091,7 @@ function render() {
   const queued = shift.queue.length;
   const queue = queued ? `${queued} waiting` : shift.next < shift.arrivals.length ? 'Customers are on the way' : 'Last orders';
   setText($('queue'), queue + (shift.combo > 1 ? ` · ${shift.combo}× combo` : ''));
+  setText($('hudQueue'), queue + (shift.combo > 1 ? ` · ${shift.combo}×` : ''));
   renderSeats();
   renderPrep();
   renderStations();

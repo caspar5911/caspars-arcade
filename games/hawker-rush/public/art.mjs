@@ -418,27 +418,30 @@ export function cat(mood = 'idle') {
 
 // ---------------------------------------------------------------------------------------------------- the stall
 /** The stall's awning and front, with any decorations bought. */
-export function stallTop(decor = {}) {
-  const stripes = Array.from({ length: 10 }, (_, i) => `<path d="M${i * 40} 0 h40 v24 q-20 16 -40 0 Z" fill="${i % 2 ? '#fff6e6' : '#ff5a5f'}"/>`).join('') +
-    '<rect x="0" y="0" width="400" height="6" fill="#d8342a"/>' +
-    Array.from({ length: 10 }, (_, i) => `<circle cx="${i * 40 + 20}" cy="33" r="2.4" fill="${i % 2 ? '#ffb0b5' : '#fff'}"/>`).join('');
-  const lanterns = decor.lanterns ? [44, 356].map((x, k) => `<g class="sway" style="transform-origin:${x}px 26px;animation-delay:-${k}s"><line x1="${x}" y1="26" x2="${x}" y2="40" stroke="#5a2c0e" stroke-width="2"/><ellipse cx="${x}" cy="54" rx="13" ry="15" fill="#ff4a4a" stroke="#b81c1c" stroke-width="2"/><path d="M${x - 13} 54 h26 M${x} 39 v30" stroke="#ffd23f" stroke-width="1.2" opacity=".7"/><rect x="${x - 7}" y="38" width="14" height="4" rx="1" fill="#ffd23f"/><rect x="${x - 7}" y="67" width="14" height="4" rx="1" fill="#ffd23f"/><path d="M${x} 71 v8" stroke="#ffd23f" stroke-width="2"/></g>`).join('') : '';
-  const sign = decor.sign ? '<g><rect x="108" y="34" width="184" height="30" rx="10" fill="#4a2a1a" stroke="#ffd23f" stroke-width="3"/><text x="200" y="55" text-anchor="middle" font-size="16" font-weight="900" fill="#ffd23f" font-family="system-ui">HAWKER RUSH</text></g>' : '';
-  const neon = decor.neon ? '<text x="200" y="84" text-anchor="middle" font-size="15" font-weight="900" fill="#ff5ad6" stroke="#ffd6f6" stroke-width=".6" font-family="system-ui" class="neon">★ OPEN ★</text>' : '';
-  return svg(400, 92, stripes + lanterns + sign + neon, 'stall-top');
+export function stallTop(decor = {}, w = 400) {
+  const stripes = Array.from({ length: Math.ceil(w / 40) }, (_, i) => `<path d="M${i * 40} 0 h40 v24 q-20 16 -40 0 Z" fill="${i % 2 ? '#fff6e6' : '#ff5a5f'}"/>`).join('') +
+    `<rect x="0" y="0" width="${w}" height="6" fill="#d8342a"/>` +
+    Array.from({ length: Math.ceil(w / 40) }, (_, i) => `<circle cx="${i * 40 + 20}" cy="33" r="2.4" fill="${i % 2 ? '#ffb0b5' : '#fff'}"/>`).join('');
+  const lanterns = decor.lanterns ? [44, w - 44].map((x, k) => `<g class="sway" style="transform-origin:${x}px 26px;animation-delay:-${k}s"><line x1="${x}" y1="26" x2="${x}" y2="40" stroke="#5a2c0e" stroke-width="2"/><ellipse cx="${x}" cy="54" rx="13" ry="15" fill="#ff4a4a" stroke="#b81c1c" stroke-width="2"/><path d="M${x - 13} 54 h26 M${x} 39 v30" stroke="#ffd23f" stroke-width="1.2" opacity=".7"/><rect x="${x - 7}" y="38" width="14" height="4" rx="1" fill="#ffd23f"/><rect x="${x - 7}" y="67" width="14" height="4" rx="1" fill="#ffd23f"/><path d="M${x} 71 v8" stroke="#ffd23f" stroke-width="2"/></g>`).join('') : '';
+  const sign = decor.sign ? `<g><rect x="${w / 2 - 92}" y="34" width="184" height="30" rx="10" fill="#4a2a1a" stroke="#ffd23f" stroke-width="3"/><text x="${w / 2}" y="55" text-anchor="middle" font-size="16" font-weight="900" fill="#ffd23f" font-family="system-ui">HAWKER RUSH</text></g>` : '';
+  const neon = decor.neon ? `<text x="${w / 2}" y="84" text-anchor="middle" font-size="15" font-weight="900" fill="#ff5ad6" stroke="#ffd6f6" stroke-width=".6" font-family="system-ui" class="neon">★ OPEN ★</text>` : '';
+  return svg(w, 92, stripes + lanterns + sign + neon, 'stall-top');
 }
 
-/** Behind the customers: the hawker centre (other stalls, hanging lamps, a ceiling fan, a crowd that grows in a rush). */
-export function backdrop() {
-  const stalls = [[0, '#ffe3a3', '#ff9f43'], [140, '#c8f0d8', '#3fb37f'], [280, '#d8e4ff', '#5a7ee0']].map(([x, wall, sign], k) =>
+/** Behind the customers: the hawker centre (other stalls, hanging lamps, a ceiling fan, a crowd that grows in a rush).
+ * `w` widens it for the sideways screen (more stalls, more lamps, a bigger crowd). */
+export function backdrop(w = 400) {
+  const colours = [['#ffe3a3', '#ff9f43'], ['#c8f0d8', '#3fb37f'], ['#d8e4ff', '#5a7ee0'], ['#ffd6e4', '#e0567e']];
+  const stalls = Array.from({ length: Math.ceil(w / 140) }, (_, k) => [k * 140, ...colours[k % colours.length]]).map(([x, wall, sign], k) =>
     `<g><rect x="${x + 6}" y="40" width="128" height="120" rx="8" fill="${wall}" opacity=".75"/>` +
     `<rect x="${x + 22}" y="48" width="96" height="22" rx="7" fill="${sign}"/>` +
     `<g fill="#fff" opacity=".9">${[0, 1, 2].map(j => `<circle cx="${x + 44 + j * 26}" cy="59" r="5"/>`).join('')}</g>` +
     `<rect x="${x + 16}" y="80" width="108" height="10" rx="4" fill="#ffffffaa"/>` +
     `<g class="steam" stroke="#ffffffcc" stroke-width="2.4" fill="none" stroke-linecap="round" style="animation-delay:-${k * .5}s"><path d="M${x + 50} 104 q-4 -6 0 -12"/><path d="M${x + 90} 104 q-4 -6 0 -12"/></g></g>`).join('');
-  const lamps = [70, 200, 330].map((x, k) => `<g class="sway" style="transform-origin:${x}px 0px;animation-delay:-${k * .8}s"><line x1="${x}" y1="0" x2="${x}" y2="26" stroke="#7a5a40" stroke-width="1.5"/><path d="M${x - 14} 36 Q${x} 18 ${x + 14} 36 Z" fill="#ffcf6b"/><ellipse cx="${x}" cy="38" rx="16" ry="5" fill="#fff3b8" opacity=".55"/></g>`).join('');
-  const fan = '<g transform="translate(200 16)"><g class="spin">' + [0, 120, 240].map(a => `<ellipse cx="0" cy="-15" rx="5" ry="15" fill="#e8d8c0" stroke="#bba58a" transform="rotate(${a})"/>`).join('') + '</g><circle r="5" fill="#bba58a"/></g>';
-  const crowd = [[30, '#ffb3c6'], [95, '#b8e0ff'], [160, '#ffe0a3'], [225, '#c6f0c0'], [290, '#e0c8ff'], [355, '#ffd0b0']].map(([x, c], k) =>
+  const lamps = Array.from({ length: Math.round(w / 130) }, (_, k) => 70 + k * 130).map((x, k) => `<g class="sway" style="transform-origin:${x}px 0px;animation-delay:-${k * .8}s"><line x1="${x}" y1="0" x2="${x}" y2="26" stroke="#7a5a40" stroke-width="1.5"/><path d="M${x - 14} 36 Q${x} 18 ${x + 14} 36 Z" fill="#ffcf6b"/><ellipse cx="${x}" cy="38" rx="16" ry="5" fill="#fff3b8" opacity=".55"/></g>`).join('');
+  const fan = `<g transform="translate(${w / 2} 16)">` + '<g class="spin">' + [0, 120, 240].map(a => `<ellipse cx="0" cy="-15" rx="5" ry="15" fill="#e8d8c0" stroke="#bba58a" transform="rotate(${a})"/>`).join('') + '</g><circle r="5" fill="#bba58a"/></g>';
+  const tints = ['#ffb3c6', '#b8e0ff', '#ffe0a3', '#c6f0c0', '#e0c8ff', '#ffd0b0'];
+  const crowd = Array.from({ length: Math.round(w / 65) }, (_, k) => [30 + k * 65, tints[k % tints.length]]).map(([x, c], k) =>
     `<g class="walker ${k % 2 ? 'rush-only' : ''}" style="animation-delay:-${k * 1.7}s"><circle cx="${x}" cy="128" r="11" fill="${c}"/><path d="M${x - 14} 160 Q${x - 14} 140 ${x} 139 Q${x + 14} 140 ${x + 14} 160 Z" fill="${c}"/></g>`).join('');
-  return svg(400, 160, stalls + crowd + fan + lamps, 'backdrop-art');
+  return svg(w, 160, stalls + crowd + fan + lamps, 'backdrop-art').replace('<svg ', '<svg preserveAspectRatio="xMidYMax meet" ');
 }
