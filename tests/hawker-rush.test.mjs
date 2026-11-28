@@ -343,7 +343,7 @@ test('the leaderboard server replays with this exact copy of the rules', async (
   const { createHash } = await import('node:crypto');
   const { readFile } = await import('node:fs/promises');
   const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
-  assert.equal(createHash('sha256').update(text).digest('hex'), '7dfbebd96cde7dd55d9771f96e7a3b5be98815c9d52f796a19ecd81f53911fb1');
+  assert.equal(createHash('sha256').update(text).digest('hex'), 'd11d00e8605be7daeda79ee48c7047c39def244c30a92db18e777f5d4217831f');
 });
 
 test('a phone showing an old copy moves to a newer release (and only a newer one)', async () => {
@@ -485,4 +485,16 @@ test('special customers: critics, big groups and regulars (never in a speed run)
   step(s);
   assert.equal(s.coins, 0);
   assert.ok(s.events.some(e => e.type === 'angry' && e.review === 'bad' && e.fine === 3 && e.fine <= CRITIC_FINE));
+});
+
+test('the late days ease off: a slower-growing crowd, a learning day for roti telur, a gentler first star', () => {
+  const count = day => schedule({ day, seed: 'curve' }).length;
+  assert.deepEqual([1, 5, 8, 10].map(count), [10, 16, 19, 22]); // (days 1–10 as before)
+  assert.equal(count(11), 21); // (roti telur's first day: a smaller crowd)
+  assert.deepEqual([12, 13, 15].map(count), [23, 24, 25]);
+  const s8 = createShift({ day: 8, seed: 'g' }), s9 = createShift({ day: 9, seed: 'g' });
+  const worth = s => s.arrivals.reduce((n, p) => n + p.order.reduce((t, d) => t + DISHES[d].price, 0), 0);
+  assert.equal(s8.goal[0], Math.round(worth(s8) * .45));
+  assert.equal(s9.goal[0], Math.round(worth(s9) * .38));
+  assert.equal(s9.goal[2], Math.round(worth(s9) * 1.05));
 });
