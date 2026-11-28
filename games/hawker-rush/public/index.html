@@ -84,6 +84,16 @@
       <p class="note settings-note">Stats are anonymous: which day you reach, stars, customers served and how long you play, to help balance the game. No name, account or address is sent.</p>
       <button id="resetTips" class="link" type="button">Show the first-time tips again</button>
     </details>
+    <section class="today-card" aria-labelledby="todayTitle">
+      <div class="level-row">
+        <span class="level-badge" aria-hidden="true">🏪</span>
+        <span class="level-text">Stall level <b id="levelNum">1</b><small id="xpNote"></small></span>
+        <span class="xp-bar" aria-hidden="true"><i id="xpFill"></i></span>
+      </div>
+      <h3 id="todayTitle">📋 Today’s missions</h3>
+      <ul id="missionList" class="missions"></ul>
+      <p id="missionBonus" class="note"></p>
+    </section>
     <button id="openCoop" class="tile coop-tile" type="button"><span aria-hidden="true" class="mode-icon">👫</span><span>Play with friends<small>Share one stall, live, on your phones</small></span></button>
     <div class="mode-grid">
       <button id="openSpeed" class="tile" type="button"><span aria-hidden="true" class="mode-icon">◷</span><span>Speed Run<small id="speedBest">Serve 15 customers</small></span></button>
@@ -162,6 +172,7 @@
         <button id="resRetry" class="ghost" type="button" autofocus>Play again</button>
         <button id="resChallenge" class="ghost" type="button">Challenge a friend</button>
       </div>
+      <button id="resPicture" class="ghost" type="button">📸 Share a picture</button>
       <input id="shareLink" aria-label="Challenge link" readonly hidden>
       <p id="shareNote" class="note" role="status"></p>
       <button id="resShop" class="ghost" type="button">Shop</button>

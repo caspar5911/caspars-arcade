@@ -498,3 +498,46 @@ test('the late days ease off: a slower-growing crowd, a learning day for roti te
   assert.equal(s9.goal[0], Math.round(worth(s9) * .38));
   assert.equal(s9.goal[2], Math.round(worth(s9) * 1.05));
 });
+
+test('daily missions: three a day, the same all day, counted from shifts, paid once', async () => {
+  const { dailyMissions, missionsFor, progress } = await import('../games/hawker-rush/public/missions.mjs');
+  for (let k = 0; k < 40; k++) {
+    const date = `2026-12-${String(1 + (k % 28)).padStart(2, '0')}`;
+    const list = dailyMissions(date, 1 + (k % 15));
+    assert.equal(list.length, 3);
+    assert.equal(new Set(list.map(m => m.kind)).size, 3);
+    assert.deepEqual(list, dailyMissions(date, 1 + (k % 15))); // (the same all day)
+    for (const m of list) {
+      assert.ok(m.text && m.need >= 1 && m.pay > 0);
+      if (m.kind === 'dish') assert.ok(menuFor(Math.min(15, 1 + (k % 15))).includes(m.dish));
+      if (m.kind === 'regulars') assert.ok(1 + (k % 15) >= 2);
+    }
+  }
+  const today = missionsFor(null, '2026-12-01', 5);
+  assert.equal(missionsFor(today, '2026-12-01', 9), today);            // (kept for the day)
+  assert.equal(missionsFor(today, '2026-11-30', 9), today);            // (a clock wound back keeps them)
+  assert.notEqual(missionsFor(today, '2026-12-02', 9), today);         // (a new day, new missions)
+  today.list = [{ kind: 'served', need: 10, have: 0, done: false, pay: 15 }, { kind: 'combo', need: 5, have: 0, done: false, pay: 15 },
+    { kind: 'shifts', need: 2, have: 0, done: false, pay: 10 }];
+  let r = progress(today, { served: 6, bestCombo: 4, dishes: {} });
+  assert.deepEqual([r.done.length, r.bonus], [0, false]);
+  r = progress(today, { served: 7, bestCombo: 5, dishes: {} });
+  assert.deepEqual(r.done.map(m => m.kind), ['served', 'combo', 'shifts']);
+  assert.equal(r.bonus, true);
+  assert.equal(today.list[0].have, 10);
+  r = progress(today, { served: 9, bestCombo: 9, dishes: {} });
+  assert.deepEqual([r.done.length, r.bonus], [0, false]);             // (paid once)
+});
+
+test('the stall level: XP from every shift, levels at 30, 90, 180…, decorations on the way', async () => {
+  const { levelAt, xpForLevel, xpFor, decorAt, levelPay } = await import('../games/hawker-rush/public/missions.mjs');
+  assert.deepEqual([0, 29, 30, 89, 90, 179, 180, 300].map(levelAt), [1, 1, 2, 2, 3, 3, 4, 5]);
+  for (let n = 1; n < 60; n++) {
+    assert.equal(levelAt(xpForLevel(n)), n);
+    assert.equal(levelAt(xpForLevel(n + 1) - 1), n);
+  }
+  assert.equal(xpFor({ served: 12, stars: 3, missions: 1 }), 12 + 9 + 10);
+  assert.deepEqual(decorAt(4), { bunting: true });
+  assert.deepEqual(Object.keys(decorAt(12)), ['bunting', 'fairy', 'flowers', 'star']);
+  assert.equal(levelPay(20), 100);
+});

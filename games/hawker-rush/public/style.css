@@ -1061,3 +1061,26 @@ body.in-shift .hud-sub { display: none; }
 .settings { margin: 4px 0 6px; padding: 4px 10px; border: 1px dashed var(--line); border-radius: 14px; }
 .settings summary { cursor: pointer; padding: 6px 2px; color: var(--muted); font-weight: 800; font-size: .9rem; text-align: center; }
 .settings .settings-note { margin: 2px 6px 6px; text-align: center; font-size: .74rem; }
+
+/* ------------------------------------------------ the stall level and today's missions */
+.today-card { margin: 8px 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+:root[data-tone="light"] .today-card { box-shadow: 0 3px 0 var(--line); }
+.today-card h3 { margin: 10px 0 4px; font-size: .95rem; }
+.level-row { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
+.level-badge { grid-row: span 2; font-size: 1.7rem; }
+.level-text { font-weight: 800; }
+.level-text b { color: var(--accent, var(--gold)); font-size: 1.1rem; }
+.level-text small { display: block; color: var(--muted); font-size: .72rem; font-weight: 650; }
+.xp-bar { display: block; height: 8px; margin-top: 3px; overflow: hidden; border-radius: 5px; background: var(--deep); }
+.xp-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--gold), #ff9f5a); transition: width .4s; }
+.missions { margin: 0; padding: 0; list-style: none; }
+.missions li { display: grid; grid-template-columns: 22px 1fr; column-gap: 6px; align-items: center; padding: 5px 0; border-bottom: 1px dashed var(--line); }
+.missions li:last-child { border-bottom: 0; }
+.mission-check { grid-row: span 2; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--deep); color: var(--muted); font-weight: 900; }
+.missions li.done .mission-check { background: #3f9a5a; color: #fff; }
+.mission-text { font-size: .86rem; font-weight: 750; }
+.mission-text small { display: block; color: var(--muted); font-size: .7rem; font-weight: 650; }
+.mission-bar { display: block; height: 5px; margin-top: 3px; overflow: hidden; border-radius: 3px; background: var(--deep); }
+.mission-bar i { display: block; height: 100%; background: #3f9a5a; }
+.missions li.done .mission-text { opacity: .7; }
+.today-card .note { margin: 6px 0 0; text-align: center; }

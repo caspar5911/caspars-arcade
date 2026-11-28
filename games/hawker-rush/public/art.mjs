@@ -464,7 +464,23 @@ export function stallTop(decor = {}, w = 400) {
   const lanterns = decor.lanterns ? [44, w - 44].map((x, k) => `<g class="sway" style="transform-origin:${x}px 26px;animation-delay:-${k}s"><line x1="${x}" y1="26" x2="${x}" y2="40" stroke="#5a2c0e" stroke-width="2"/><ellipse cx="${x}" cy="54" rx="13" ry="15" fill="#ff4a4a" stroke="#b81c1c" stroke-width="2"/><path d="M${x - 13} 54 h26 M${x} 39 v30" stroke="#ffd23f" stroke-width="1.2" opacity=".7"/><rect x="${x - 7}" y="38" width="14" height="4" rx="1" fill="#ffd23f"/><rect x="${x - 7}" y="67" width="14" height="4" rx="1" fill="#ffd23f"/><path d="M${x} 71 v8" stroke="#ffd23f" stroke-width="2"/></g>`).join('') : '';
   const sign = decor.sign ? `<g><rect x="${w / 2 - 92}" y="34" width="184" height="30" rx="10" fill="#4a2a1a" stroke="#ffd23f" stroke-width="3"/><text x="${w / 2}" y="55" text-anchor="middle" font-size="16" font-weight="900" fill="#ffd23f" font-family="system-ui">HAWKER RUSH</text></g>` : '';
   const neon = decor.neon ? `<text x="${w / 2}" y="84" text-anchor="middle" font-size="15" font-weight="900" fill="#ff5ad6" stroke="#ffd6f6" stroke-width=".6" font-family="system-ui" class="neon">★ OPEN ★</text>` : '';
-  return svg(w, 92, stripes + lanterns + sign + neon, 'stall-top');
+  // (earned by levelling up the stall)
+  const flagColours = ['#ff8a8a', '#ffd86b', '#7fcf8a', '#6ec1f0', '#c3a6ff'];
+  const bunting = decor.bunting ? '<path d="M0 40 Q' + w / 2 + ' 52 ' + w + ' 40" stroke="#c98f5a" stroke-width="1.4" fill="none"/>' +
+    Array.from({ length: Math.floor(w / 26) }, (_, i) => {
+      const x = 8 + i * 26, y = 40 + 12 * (1 - ((x - w / 2) / (w / 2)) ** 2) * .9;
+      return `<path d="M${x} ${y} l10 0 l-5 9 Z" fill="${flagColours[i % flagColours.length]}"/>`;
+    }).join('') : '';
+  const fairy = decor.fairy ? '<path d="M0 44 Q' + w / 4 + ' 58 ' + w / 2 + ' 44 T ' + w + ' 44" stroke="#5a4a3a" stroke-width="1" fill="none" opacity=".6"/>' +
+    Array.from({ length: Math.floor(w / 20) }, (_, i) => {
+      const x = 10 + i * 20, t = (x % (w / 2)) / (w / 2), y = 44 + 14 * Math.sin(Math.PI * t) * (Math.floor(x / (w / 2)) % 2 ? -.2 : 1) * .6;
+      return `<circle cx="${x}" cy="${y + 2}" r="2.6" fill="${['#fff3a0', '#ffd0e0', '#c8f0ff'][i % 3]}" class="twinkle" style="animation-delay:-${(i * .37) % 1.2}s"/>`;
+    }).join('') : '';
+  const box = x => `<g><rect x="${x}" y="80" width="46" height="12" rx="3" fill="#b07a45" stroke="#7a4f27" stroke-width="1.4"/>` +
+    [0, 1, 2].map(k => `<g transform="translate(${x + 9 + k * 14} 76)"><circle r="5" fill="${['#ff8fb3', '#ffd86b', '#c3a6ff'][k]}"/><circle r="2" fill="#fff6d0"/></g>`).join('') + '</g>';
+  const flowers = decor.flowers ? box(6) + box(w - 52) : '';
+  const star = decor.star ? `<g transform="translate(${w / 2} 16)" class="twinkle" style="animation-duration:1.6s"><path d="M0 -12 l3.5 7.5 l8.2 1 l-6 5.6 l1.6 8.1 l-7.3 -4 l-7.3 4 l1.6 -8.1 l-6 -5.6 l8.2 -1 Z" fill="#ffd23f" stroke="#c99400" stroke-width="1.4"/></g>` : '';
+  return svg(w, 92, stripes + bunting + fairy + lanterns + sign + neon + flowers + star, 'stall-top');
 }
 
 /** Things bought in the shop, standing in the stall: the standing fan, the tip jar, the kitchen timer. */

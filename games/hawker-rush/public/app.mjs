@@ -10,6 +10,8 @@ import { bonusGoal, goalProgress } from './goals.mjs';
 import { ACHIEVEMENTS, MASTERY, REGULAR_HEARTS, STICKER_GOLD, collect, masteryOf, newAchievements } from './collection.mjs';
 import { GIFTS, claimGift, localDay } from './gift.mjs';
 import { sendStat, setStats, statsOn } from './stats.mjs';
+import { resultPicture, sharePicture } from './share.mjs';
+import { ALL_DONE_BONUS, LEVEL_DECOR, decorAt, levelAt, levelPay, missionsFor, progress, xpFor, xpForLevel } from './missions.mjs';
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'hawker-rush-save';
@@ -80,6 +82,16 @@ function loadSave() {
   const collection = { dishes: counts(raw?.collection?.dishes), people: counts(raw?.collection?.people) };
   const achievements = {};
   for (const a of ACHIEVEMENTS) if (raw?.achievements?.[a.id] === true) achievements[a.id] = true;
+  // (the day's missions: only in their checked shape)
+  const missionKinds = ['served', 'dish', 'fevers', 'perfect', 'combo', 'shifts', 'threeStars', 'regulars'];
+  const m = raw?.missions;
+  const missions = m && /^\d{4}-\d{2}-\d{2}$/.test(m.date ?? '') && Array.isArray(m.list) && m.list.length === 3 &&
+    m.list.every(x => missionKinds.includes(x?.kind) && Number.isSafeInteger(x.need) && x.need >= 1 && x.need <= 100 &&
+      Number.isSafeInteger(x.have) && x.have >= 0 && x.have <= x.need && typeof x.done === 'boolean' &&
+      typeof x.text === 'string' && x.text.length <= 80 && Number.isSafeInteger(x.pay) && x.pay >= 0 && x.pay <= 50 &&
+      (x.dish === undefined || Object.hasOwn(E.DISHES, x.dish)))
+    ? { date: m.date, bonus: m.bonus === true, list: m.list.map(x => ({ kind: x.kind, need: x.need, have: x.have, done: x.done,
+      text: x.text, pay: x.pay, ...(x.dish ? { dish: x.dish } : {}) })) } : null;
   const seen = {};
   for (const id of Object.keys(TIPS)) if (raw?.seen?.[id] === true) seen[id] = true;
   const regularHearts = {};
@@ -92,7 +104,8 @@ function loadSave() {
   const gift = /^\d{4}-\d{2}-\d{2}$/.test(raw?.gift?.last ?? '')
     ? { last: raw.gift.last, streak: boundedInt(raw.gift.streak, 1, 100000, 1) } : null;
   return {
-    version: 2, day, best, upgrades, decor, records, collection, achievements, goalsDone, gift, regulars: regularHearts, seen,
+    version: 2, day, best, upgrades, decor, records, collection, achievements, goalsDone, gift, regulars: regularHearts, seen, missions,
+    xp: boundedInt(raw?.xp, 0, Number.MAX_SAFE_INTEGER),
     wallet: Number.isFinite(raw?.wallet) && raw.wallet > 0 ? raw.wallet : 0,
     guided: raw?.guided === true || day > 1,
     nickname: typeof raw?.nickname === 'string' ? raw.nickname.slice(0, 16) : '',
@@ -189,8 +202,29 @@ function stopShift() {
 }
 
 function stall(decor, w) {
-  return Art.stallTop(decor, w) + (decor.plants
+  return Art.stallTop({ ...decor, ...decorAt(levelAt(save.xp)) }, w) + (decor.plants
     ? '<span class="plant left">🪴</span><span class="plant right">🪴</span>' : '');
+}
+
+/** 🏪 The stall level and 📋 today's missions, on the home page. */
+function renderToday() {
+  const fresh = missionsFor(save.missions, localDay(), save.day);
+  if (fresh !== save.missions) {
+    save.missions = fresh;
+    persist();
+  }
+  const level = levelAt(save.xp), from = xpForLevel(level), to = xpForLevel(level + 1);
+  const next = LEVEL_DECOR.find(d => d.level > level);
+  setText($('levelNum'), String(level));
+  $('xpFill').style.width = `${Math.round(100 * (save.xp - from) / (to - from))}%`;
+  setText($('xpNote'), `${save.xp - from} / ${to - from} XP` + (next ? ` · ${next.name} at level ${next.level}` : ''));
+  $('missionList').innerHTML = save.missions.list.map(m =>
+    `<li class="${m.done ? 'done' : ''}"><span class="mission-check" aria-hidden="true">${m.done ? '✓' : '○'}</span>` +
+    `<span class="mission-text">${m.text}<small>${m.done ? 'Done!' : `${m.have} / ${m.need}`} · +${money(m.pay)}</small></span>` +
+    `<span class="mission-bar" aria-hidden="true"><i style="width:${Math.round(100 * m.have / m.need)}%"></i></span></li>`).join('');
+  const left = save.missions.list.filter(m => !m.done).length;
+  setText($('missionBonus'), save.missions.bonus ? 'All three done today: see you tomorrow! 🎉'
+    : `Finish all three for +${money(ALL_DONE_BONUS)} more` + (left < 3 ? ` (${left} to go)` : ''));
 }
 
 /** 🎁 The day's gift, once a day, on the home page. */
@@ -241,6 +275,7 @@ function home({ focus = true } = {}) {
   setTimeout(() => applyUpdate?.(), 0); // (a release that came out mid-shift goes in now)
   setTimeout(offerGift, 500);
   $('collectionNote').textContent = `${ACHIEVEMENTS.filter(a => save.achievements[a.id]).length} of ${ACHIEVEMENTS.length} achievements`;
+  renderToday();
   $('homeStall').innerHTML = stall(save.decor) +
     `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.cat('cheer', theme)}${Art.dish('cup', ['kopi', 'milk'], { face: true })}${Art.person('uncle', 'happy')}</div>`;
   $('play').textContent = save.day > E.DAYS ? `Play endless day ${save.day}` : `Play day ${save.day}`;
@@ -513,8 +548,9 @@ function dressStall() {
   const w = scene.clientWidth, h = scene.clientHeight;
   const sideways = w > 1.8 * h && w > 500;
   const key = sideways ? `${Math.round(w / 40)}:${Math.round(h / 20)}` : 'upright';
-  if (scene.dataset.dressed === key + JSON.stringify(save.decor)) return;
-  scene.dataset.dressed = key + JSON.stringify(save.decor);
+  const dressed = key + JSON.stringify(save.decor) + levelAt(save.xp);
+  if (scene.dataset.dressed === dressed) return;
+  scene.dataset.dressed = dressed;
   $('awning').innerHTML = stall(save.decor, sideways ? Math.max(400, Math.round(w * 1.55)) : 400);
   // (drawn no bigger than 1.2×, so on a big screen the hawker centre keeps a sensible size behind the customers)
   $('backdrop').innerHTML = Art.backdrop(sideways ? Math.max(400, Math.round(w / Math.min(1.2, Math.max(.3, h / 160)))) : 400);
@@ -895,6 +931,32 @@ function settle(stars) {
   if (golds.length) {
     pay(10 * golds.length);
     rows.push(['🌟 Gold stickers', golds.map(n => people[n.id] ?? n.id).join(', ') + ` +${money(10 * golds.length)}`]);
+  }
+  // 📋 the day's missions
+  save.missions = missionsFor(save.missions, localDay(), save.day);
+  const mission = progress(save.missions, {
+    served: shift.served, dishes: run.stats.dishes, fevers: shift.fevers ?? 0, perfect: run.stats.perfect,
+    bestCombo: shift.bestCombo, threeStars: run.mode === 'day' && stars === 3,
+    regulars: Object.values(run.stats.regulars).reduce((n, k) => n + k, 0),
+  });
+  for (const m of mission.done) {
+    pay(m.pay);
+    rows.push(['📋 Mission done', `${m.text} +${money(m.pay)}`]);
+  }
+  if (mission.bonus) {
+    pay(ALL_DONE_BONUS);
+    rows.push(['📋 All three missions!', '+' + money(ALL_DONE_BONUS)]);
+  }
+  // 🏪 the stall level
+  const before = levelAt(save.xp);
+  save.xp += xpFor({ served: shift.served, stars: run.mode === 'speed' ? 0 : stars, missions: mission.done.length });
+  const after = levelAt(save.xp);
+  if (after > before) {
+    let amount = 0;
+    for (let n = before + 1; n <= after; n++) amount += levelPay(n);
+    pay(amount);
+    const unlocked = LEVEL_DECOR.filter(d => d.level > before && d.level <= after).map(d => d.name);
+    rows.push([`🏪 Stall level ${after}!`, `+${money(amount)}` + (unlocked.length ? ` · ${unlocked.join(', ')} for your stall` : '')]);
   }
   const earned = newAchievements(save.achievements, achievementFacts(stars));
   for (const a of earned) {
@@ -1979,6 +2041,28 @@ $('resRetry').addEventListener('click', () => result?.coop ? coopPage() : prepar
 $('resShop').addEventListener('click', () => shop('results'));
 $('resHome').addEventListener('click', () => home());
 $('resChallenge').addEventListener('click', shareChallenge);
+$('resPicture').addEventListener('click', async () => {
+  // 📸 a picture of this result, in the player's theme
+  const css = getComputedStyle(document.documentElement);
+  const v = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const colours = { ground: v('--ground', '#241d15'), panel: v('--panel', '#372820'), ink: v('--ink', '#fff2de'),
+    muted: v('--muted', '#ccbba0'), accent: v('--accent', v('--gold', '#ffcc6f')), line: v('--line', '#78583c'), glow: v('--glow', '#6a442b') };
+  const lines = [['Customers served', shift?.served ?? 0]];
+  if ((shift?.tips ?? 0) > 0) lines.push(['Tips and combos', money(shift.tips)]);
+  if ((shift?.bestCombo ?? 0) > 1) lines.push(['Best combo', `×${shift.bestCombo}`]);
+  if ((shift?.fevers ?? 0) > 0) lines.push(['Fever times', shift.fevers]);
+  if ((shift?.reviews ?? 0) > 0) lines.push(['Glowing reviews', shift.reviews]);
+  const title = (result?.title ?? run?.title ?? 'Hawker Rush').replace(/\s*👫/, ' with friends');
+  const big = $('resMoney').textContent.replace(/ earned( together)?$/, '');
+  $('resPicture').disabled = true;
+  setText($('shareNote'), 'Making your picture…');
+  const blob = await resultPicture({ title, stars: $('resStars').hidden ? null : $('resStars').textContent, big, lines,
+    cat: Art.cat('cheer', theme), colours, link: 'caspar5911.github.io/caspars-arcade',
+    dishes: Object.entries(run?.stats?.dishes ?? {}).sort((a, b) => b[1] - a[1]).map(([id]) => dishArt(id, { face: true })) });
+  const how = await sharePicture(blob, `I got ${big} on ${title} in Hawker Rush! 🍜 Can you beat it? ${location.origin + location.pathname}`);
+  $('resPicture').disabled = false;
+  setText($('shareNote'), how === 'saved' ? 'Picture saved: share it from your photos or downloads.' : how === 'shared' ? 'Shared! 🎉' : '');
+});
 $('saveScore').addEventListener('submit', saveScore);
 $('shopBack').addEventListener('click', () => {
   if (shopReturn === 'results') {
