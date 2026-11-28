@@ -1105,6 +1105,7 @@ function renderHint() {
   }
   const text = hintOverride && shift.t < hintOverride.until ? hintOverride.text : guided ?? message;
   setText($('hint'), text);
+  $('hint').classList.toggle('long', text.length > 76); // (still two lines upright, in smaller print)
   setText($('hudHint'), text); // (sideways, the tip rides in the top bar)
 }
 

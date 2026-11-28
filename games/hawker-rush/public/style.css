@@ -746,11 +746,22 @@ body.in-shift .hud-sub { display: none; }
     padding-bottom: max(5px, env(safe-area-inset-bottom));
   }
   #shift .topline { position: relative; align-self: center; width: calc(100% - 12px); margin: 4px 0 -32px; }
-  #shift .scene { flex: 1 1 auto; min-height: 120px; }
+  #shift .scene { flex: 1 1 auto; min-height: 108px; }
   #shift .counter { border-radius: 0; }
-  #shift .hint { min-height: 0; margin: 0; padding: 4px 6px; font-size: .76rem; line-height: 1.2; }
+  /* (the tip box is always two lines tall, so a longer tip never pushes the customers up) */
+  #shift .hint { flex: none; height: calc(2.4 * .76rem + 8px); min-height: 0; margin: 0; padding: 4px 6px; overflow: hidden; font-size: .76rem; line-height: 1.2; }
+  #shift .hint.long { font-size: clamp(.58rem, 3vw, .66rem); }
   #shift .kitchen { flex: none; }
   #shift .queue { position: absolute; z-index: 3; right: 6px; bottom: 12px; padding: 1px 8px; border-radius: 9px; font-size: .66rem; }
+}
+
+@media not all and (orientation: landscape) and (min-aspect-ratio: 5/4) {
+  @media (max-height: 720px) {
+    /* (short phones: slimmer trays and stoves, so the customers keep some room) */
+    #shift { --tray: 39px; --tray-art: 22px; --stove: 32px; --prep: 32px; }
+    .stove { padding-block: 4px; }
+    .lines { gap: 4px 6px; padding-block: 4px 6px; }
+  }
 }
 
 /* sideways: one long stall. The counter sits beside the stove line; the tip and the queue note ride in the top bar */
