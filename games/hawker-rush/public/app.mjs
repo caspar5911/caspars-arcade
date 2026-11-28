@@ -11,11 +11,12 @@ import { ACHIEVEMENTS, MASTERY, REGULAR_HEARTS, STICKER_GOLD, collect, masteryOf
 import { GIFTS, claimGift, localDay } from './gift.mjs';
 import { sendStat, setStats, statsOn } from './stats.mjs';
 import { resultPicture, sharePicture } from './share.mjs';
+import * as Acct from './account.mjs';
 import { ALL_DONE_BONUS, LEVEL_DECOR, decorAt, levelAt, levelPay, missionsFor, progress, xpFor, xpForLevel } from './missions.mjs';
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'hawker-rush-save';
-const pages = ['home', 'intro', 'shift', 'shop', 'boards', 'coop', 'collection'];
+const pages = ['home', 'intro', 'shift', 'shop', 'boards', 'coop', 'collection', 'account'];
 const stationActions = { toaster: 'Toast bread', pot: 'Boil eggs', grill: 'Grill satay' };
 const people = Object.fromEntries(E.PEOPLE.map(person => [person.id, person.name]));
 const regulars = Object.fromEntries(E.REGULARS.map(r => [r.id, r]));
@@ -134,6 +135,7 @@ function persist() {
   } catch {
     // Storage can be disabled. The current visit still retains progress.
   }
+  cloudSoon(); // (and to the account, when signed in)
 }
 
 function button(label, className = '') {
@@ -276,6 +278,8 @@ function home({ focus = true } = {}) {
   setTimeout(offerGift, 500);
   $('collectionNote').textContent = `${ACHIEVEMENTS.filter(a => save.achievements[a.id]).length} of ${ACHIEVEMENTS.length} achievements`;
   renderToday();
+  renderAccountTile();
+  adoptWhenSafe(); // (newer progress from another phone goes in here, never mid-shift)
   $('homeStall').innerHTML = stall(save.decor) +
     `<div class="home-portraits">${Art.person('auntie', 'happy')}${Art.cat('cheer', theme)}${Art.dish('cup', ['kopi', 'milk'], { face: true })}${Art.person('uncle', 'happy')}</div>`;
   $('play').textContent = save.day > E.DAYS ? `Play endless day ${save.day}` : `Play day ${save.day}`;
@@ -608,7 +612,7 @@ function coopPage(code = '') {
   pending = null;
   $('team').hidden = true;
   show('coop', 'Play with friends');
-  if (!$('coopName').value) $('coopName').value = save.nickname;
+  if (!$('coopName').value) $('coopName').value = save.nickname || Acct.current()?.username || '';
   if (code) $('coopCode').value = code;
   coopNote('');
   renderRoom();
@@ -1802,7 +1806,7 @@ function renderResults() {
   $('saveScore').hidden = true;
   $('saveBtn').disabled = false;
   $('name').disabled = false;
-  $('name').value = save.nickname;
+  $('name').value = save.nickname || Acct.current()?.username || '';
   $('saveNote').textContent = '';
   $('shareNote').textContent = '';
   $('shareLink').hidden = true;
@@ -2135,7 +2139,7 @@ function stepBack() {
     else if (!$('results').open) home();
     return;
   }
-  const backs = { intro: 'introBack', shop: 'shopBack', boards: 'boardsBack', coop: 'coopBack', collection: 'collectionBack' };
+  const backs = { intro: 'introBack', shop: 'shopBack', boards: 'boardsBack', coop: 'coopBack', collection: 'collectionBack', account: 'accountBack' };
   if (backs[page]) $(backs[page]).click();
 }
 $('back').addEventListener('click', event => {
@@ -2275,6 +2279,238 @@ for (const b of $('team').querySelectorAll('[data-emote]')) {
 const challenge = parseChallenge(location.href);
 // (a newer release reloads itself in, but only from the home page with no co-op stall open)
 const applyUpdate = keepUpdated(() => page === 'home' && !Co.current() && !document.querySelector('dialog[open]'));
+// ---------------------------------------------------------------------------------------------------- 🏪 the account
+// Signed in, the progress is also kept on the server: uploaded a moment after every change (and when back online),
+// checked when the game opens. If another phone saved newer progress, this phone takes it, on the home page only.
+let cloudTimer = null, cloudBusy = false, cloudNewer = null, edits = 0;
+const hasProgress = s => (s?.day ?? 1) > 1 || (s?.wallet ?? 0) > 0 || (s?.totals?.shifts ?? 0) > 0 || (s?.xp ?? 0) > 0;
+function describe(s) {
+  return `Day ${Math.max(1, Number(s?.day) || 1)} · ${money(Number(s?.wallet) || 0)} · stall level ${levelAt(Number(s?.xp) || 0)}`;
+}
+function setSync(text) {
+  setText($('acctSync'), text);
+}
+
+function cloudSoon() {
+  const a = Acct.current();
+  if (!a) return;
+  edits++;
+  if (!a.dirty) Acct.remember({ ...a, dirty: true });
+  clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(cloudSave, 1500);
+}
+
+async function cloudSave() {
+  const a = Acct.current();
+  if (!a || !a.dirty || cloudBusy) return;
+  cloudBusy = true;
+  const at = edits;
+  setSync('Saving to your account…');
+  try {
+    const data = localStorage.getItem(SAVE_KEY) ?? JSON.stringify(save);
+    const r = await Acct.store(a.token, data, a.rev);
+    const now = Acct.current();
+    if (now?.token === a.token) Acct.remember({ ...now, rev: r.rev, dirty: edits !== at });
+    setSync('✓ Your progress is saved to your account.');
+    if (edits !== at) cloudTimer = setTimeout(cloudSave, 1500); // (changed again while saving)
+  } catch (error) {
+    if (error.status === 409) {
+      // (another phone saved newer progress)
+      const cloud = await Acct.load(a.token).catch(() => null);
+      if (cloud?.data) {
+        cloudNewer = cloud;
+        setSync('Newer progress from your other phone: it loads on the home page.');
+        adoptWhenSafe();
+      }
+    } else if (error.status === 401) {
+      Acct.remember(null);
+      setSync('');
+      renderAccountTile();
+      banner('You were signed out. Sign in again to keep saving.');
+    } else setSync('Offline: your progress will be saved when you’re back online.');
+  } finally {
+    cloudBusy = false;
+  }
+}
+
+/** Take the account's progress (reloads the game with it). */
+function adopt(cloud, message = 'Progress loaded from your account ✓') {
+  const a = Acct.current();
+  if (!a || !cloud?.data) return;
+  try {
+    localStorage.setItem(SAVE_KEY, cloud.data);
+    Acct.remember({ ...a, rev: cloud.rev, dirty: false });
+    sessionStorage.setItem('hawker-rush-synced', message);
+  } catch {
+    return;
+  }
+  location.reload();
+}
+
+function adoptWhenSafe() {
+  if (cloudNewer && page === 'home' && !document.querySelector('dialog[open]')) {
+    const cloud = cloudNewer;
+    cloudNewer = null;
+    adopt(cloud, 'Progress loaded from your other phone ✓');
+  }
+}
+
+/** When the game opens: is the account's progress newer than this phone's? */
+async function cloudCheck() {
+  const a = Acct.current();
+  if (!a) return;
+  try {
+    const cloud = await Acct.load(a.token);
+    if (!cloud.data) {
+      Acct.remember({ ...a, rev: cloud.rev, dirty: true }); // (an empty account: this phone's progress goes up)
+      cloudSave();
+    } else if (cloud.rev > a.rev) {
+      if (a.dirty && hasProgress(save)) askWhich(cloud);   // (both changed: the player picks)
+      else {
+        cloudNewer = cloud;
+        adoptWhenSafe();
+      }
+    } else if (a.dirty) cloudSave();
+    else setSync('✓ Your progress is saved to your account.');
+  } catch (error) {
+    if (error.status === 401) {
+      Acct.remember(null);
+      renderAccountTile();
+    } else setSync('Offline: your progress will be saved when you’re back online.');
+  }
+}
+
+/** Both the account and this phone have progress: which one to keep? */
+function askWhich(cloud) {
+  let theirs = null;
+  try {
+    theirs = JSON.parse(cloud.data);
+  } catch {
+    // (unreadable: it just shows as day 1)
+  }
+  setText($('pickAccount'), `☁️ My account: ${describe(theirs)}`);
+  setText($('pickPhone'), `📱 This phone: ${describe(save)}`);
+  $('pickAccount').onclick = () => { closeDialog('pickSave'); adopt(cloud); };
+  $('pickPhone').onclick = () => {
+    closeDialog('pickSave');
+    const a = Acct.current();
+    if (a) Acct.remember({ ...a, rev: cloud.rev, dirty: true });
+    cloudSave();
+    renderAccount();
+  };
+  openDialog('pickSave');
+}
+
+/** Just signed in (or up): bring the progress together. */
+async function signedIn(result, fresh) {
+  Acct.keepGuestCopy(localStorage.getItem(SAVE_KEY)); // (this phone's own progress, back on logging out)
+  const cloud = fresh ? { data: null, rev: 0 } : await Acct.load(result.token);
+  Acct.remember({ token: result.token, username: result.username, rev: cloud.rev, dirty: !cloud.data });
+  if (!cloud.data) await cloudSave();                // (a new or empty account: this phone's progress goes up)
+  else if (!hasProgress(save)) return adopt(cloud);   // (a new phone: the account's progress comes down)
+  else askWhich(cloud);
+  renderAccount();
+}
+
+function renderAccountTile() {
+  const a = Acct.current();
+  $('accountTileText').firstChild.textContent = a ? `Signed in as ${a.username}` : 'Sign in';
+  setText($('accountTileNote'), a ? 'Your progress is kept on any phone' : 'Keep your progress on any phone');
+}
+
+let accountTab = 'login';
+function renderAccount() {
+  const a = Acct.current();
+  $('accountOut').hidden = Boolean(a);
+  $('accountIn').hidden = !a;
+  if (a) setText($('acctName'), a.username);
+  for (const b of document.querySelectorAll('[data-acct-tab]')) b.setAttribute('aria-pressed', String(b.dataset.acctTab === accountTab));
+  setText($('acctGo'), accountTab === 'signup' ? 'Create my account' : 'Sign in');
+  $('acctPass').autocomplete = accountTab === 'signup' ? 'new-password' : 'current-password';
+  renderAccountTile();
+}
+
+function accountPage() {
+  show('account', 'Account');
+  setText($('acctNote'), '');
+  renderAccount();
+  focusHeading($('accountTitle'));
+}
+
+$('openAccount').addEventListener('click', accountPage);
+$('accountBack').addEventListener('click', () => home());
+for (const b of document.querySelectorAll('[data-acct-tab]')) b.addEventListener('click', () => { accountTab = b.dataset.acctTab; setText($('acctNote'), ''); renderAccount(); });
+$('accountForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const username = $('acctUser').value.trim(), password = $('acctPass').value;
+  $('acctGo').disabled = true;
+  setText($('acctNote'), accountTab === 'signup' ? 'Creating your account…' : 'Signing in…');
+  try {
+    const result = accountTab === 'signup' ? await Acct.signup(username, password) : await Acct.login(username, password);
+    $('acctPass').value = '';
+    setText($('acctNote'), '');
+    await signedIn(result, accountTab === 'signup');
+  } catch (error) {
+    setText($('acctNote'), error.message);
+  } finally {
+    $('acctGo').disabled = false;
+  }
+});
+$('acctLogout').addEventListener('click', async () => {
+  const a = Acct.current();
+  if (!a) return;
+  if (a.dirty) await cloudSave(); // (the last changes go up first)
+  await Acct.logout(a.token);
+  Acct.remember(null);
+  // the account's progress leaves this phone; the phone's own (from before signing in) comes back
+  const guest = Acct.takeGuestCopy();
+  try {
+    if (guest) localStorage.setItem(SAVE_KEY, guest);
+    else localStorage.removeItem(SAVE_KEY);
+    sessionStorage.setItem('hawker-rush-synced', 'Logged out. Your progress is safe in your account.');
+  } catch {
+    // (nothing to change)
+  }
+  location.reload();
+});
+$('acctChange').addEventListener('click', async () => {
+  const a = Acct.current();
+  if (!a) return;
+  try {
+    await Acct.changePassword(a.token, $('acctOld').value, $('acctNew').value);
+    $('acctOld').value = $('acctNew').value = '';
+    setText($('acctNote'), '✓ Password changed. Other phones will need to sign in again.');
+  } catch (error) {
+    setText($('acctNote'), error.message);
+  }
+});
+$('acctDelete').addEventListener('click', async () => {
+  const a = Acct.current();
+  if (!a) return;
+  try {
+    await Acct.deleteAccount(a.token, $('acctDelPass').value);
+    Acct.remember(null);
+    Acct.takeGuestCopy(); // (this phone keeps the progress it has now)
+    $('acctDelPass').value = '';
+    renderAccount();
+    setText($('acctNote'), 'Your account is deleted. The progress on this phone stays.');
+  } catch (error) {
+    setText($('acctNote'), error.message);
+  }
+});
+addEventListener('online', () => cloudSave());
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && Acct.current()?.dirty) cloudSave();
+});
+try {
+  const synced = sessionStorage.getItem('hawker-rush-synced');
+  sessionStorage.removeItem('hawker-rush-synced');
+  if (synced) setTimeout(() => banner(synced), 700);
+} catch {
+  // (no message)
+}
+cloudCheck();
+
 sendStat({ event: 'open', level: Math.max(1, Math.min(99999, save.day)), theme }); // 📊 (anonymous; see stats.mjs)
 const roomLink = new URL(location.href).searchParams.get('room');
 if (challenge) prepare(challenge.mode, challenge.spec.day, challenge);
