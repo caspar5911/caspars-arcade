@@ -372,3 +372,17 @@ test('helping friends clear a day saves it; the next day opens once every day be
   assert.equal(clearDay(save, 9, 0), null); // (no stars: not cleared)
   assert.equal(save.day, 9);
 });
+
+test('co-op pay: what the shift would pay one cook, plus 50% for playing together', async () => {
+  const { teamPay, crowdFor } = await import('../games/hawker-rush/public/rewards.mjs');
+  // (the crowd size must match the rules: a team really gets that many times the customers)
+  for (const players of [2, 3, 4]) {
+    const solo = createShift({ day: 15, seed: 'pay', mode: 'day' }).arrivals.length;
+    const team = createShift({ day: 15, seed: 'pay', mode: 'day', players }).arrivals.length;
+    assert.equal(team, Math.round(solo * crowdFor(players)));
+  }
+  assert.equal(teamPay(467, 4), 250.18); // (467 / 2.8 = 166.79 solo pay, +50%)
+  assert.equal(teamPay(160, 2), 150); // (160 / 1.6 = 100 → 150)
+  assert.equal(teamPay(100, 1), 100); // (alone in a stall: no bonus)
+  assert.equal(teamPay(0, 3), 0);
+});
