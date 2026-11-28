@@ -7,7 +7,7 @@ import { keepUpdated } from './updates.mjs';
 import { canPlay, clearDay } from './progress.mjs';
 import { teamPay, teamBonus } from './rewards.mjs';
 import { bonusGoal, goalProgress } from './goals.mjs';
-import { ACHIEVEMENTS, MASTERY, STICKER_GOLD, collect, masteryOf, newAchievements } from './collection.mjs';
+import { ACHIEVEMENTS, MASTERY, REGULAR_HEARTS, STICKER_GOLD, collect, masteryOf, newAchievements } from './collection.mjs';
 import { GIFTS, claimGift, localDay } from './gift.mjs';
 
 const $ = id => document.getElementById(id);
@@ -15,6 +15,11 @@ const SAVE_KEY = 'hawker-rush-save';
 const pages = ['home', 'intro', 'shift', 'shop', 'boards', 'coop', 'collection'];
 const stationActions = { toaster: 'Toast bread', pot: 'Boil eggs', grill: 'Grill satay' };
 const people = Object.fromEntries(E.PEOPLE.map(person => [person.id, person.name]));
+const regulars = Object.fromEntries(E.REGULARS.map(r => [r.id, r]));
+const SHORT = { huat: 'Huat', meiling: 'Mei Ling', lily: 'Lily', siti: 'Siti', rajan: 'Rajan', boon: 'Boon' }; // (seat tags)
+/** What a customer is called at the counter: a regular by name, the critic, a group, or just who they are. */
+const nameOf_ = c => c.regular ? regulars[c.regular]?.name ?? people[c.who]
+  : c.kind === 'critic' ? 'Food critic' : c.kind === 'group' ? 'Big group' : people[c.who];
 const ingredientLabels = { milk: 'Milk', soy: 'Soy', peanut: 'Peanut' };
 const cents = value => Math.round(value * 100);
 const money = value => '$' + (value % 1 ? value.toFixed(2) : value.toFixed(0));
@@ -63,12 +68,17 @@ function loadSave() {
   const collection = { dishes: counts(raw?.collection?.dishes), people: counts(raw?.collection?.people) };
   const achievements = {};
   for (const a of ACHIEVEMENTS) if (raw?.achievements?.[a.id] === true) achievements[a.id] = true;
+  const regularHearts = {};
+  for (const r of E.REGULARS) {
+    const n = boundedInt(raw?.regulars?.[r.id], 0, REGULAR_HEARTS);
+    if (n) regularHearts[r.id] = n;
+  }
   const goalsDone = {};
   for (const [id, done] of Object.entries(raw?.goalsDone ?? {})) if (/^[1-9]\d{0,5}$/.test(id) && done === true) goalsDone[id] = true;
   const gift = /^\d{4}-\d{2}-\d{2}$/.test(raw?.gift?.last ?? '')
     ? { last: raw.gift.last, streak: boundedInt(raw.gift.streak, 1, 100000, 1) } : null;
   return {
-    version: 2, day, best, upgrades, decor, records, collection, achievements, goalsDone, gift,
+    version: 2, day, best, upgrades, decor, records, collection, achievements, goalsDone, gift, regulars: regularHearts,
     wallet: Number.isFinite(raw?.wallet) && raw.wallet > 0 ? raw.wallet : 0,
     guided: raw?.guided === true || day > 1,
     nickname: typeof raw?.nickname === 'string' ? raw.nickname.slice(0, 16) : '',
@@ -303,12 +313,12 @@ function buildSeats() {
   return shift.seats.map((_, index) => {
     const el = button('', 'seat empty');
     el.dataset.seat = index;
-    el.innerHTML = '<span class="orders"></span><span class="portrait"></span><span class="patience" aria-hidden="true"><span></span></span>';
+    el.innerHTML = '<span class="orders"></span><span class="portrait"></span><span class="tag" aria-hidden="true" hidden></span><span class="patience" aria-hidden="true"><span></span></span>';
     el.addEventListener('click', () => serveSeat(index));
     seats.append(el);
     return {
       el, orders: el.querySelector('.orders'), portrait: el.querySelector('.portrait'),
-      patience: el.querySelector('.patience span'),
+      patience: el.querySelector('.patience span'), tag: el.querySelector('.tag'),
     };
   });
 }
@@ -510,7 +520,7 @@ function startShift() {
   };
   hintOverride = null;
   // (what this shift served: for the bonus goal, dish mastery and customer stickers)
-  run.stats = { dishes: {}, people: {}, perfect: 0 };
+  run.stats = { dishes: {}, people: {}, perfect: 0, regulars: {} };
   run.bonus = config.mode === 'day' ? bonusGoal(config.day) : null; // (story days, solo or with friends)
   run.bonusShown = false;
   $('bonusChip').hidden = !run.bonus;
@@ -639,7 +649,7 @@ function coopGo() {
   for (const [id, level] of Object.entries(save.upgrades)) if (level) upgrades[id] = level;
   const spec = {
     day: Number($('coopDay').value) || 1, seed: 'coop-' + Math.random().toString(36).slice(2, 10),
-    mode: 'day', upgrades, players: Math.max(1, Math.min(E.MAX_PLAYERS, room.players.length)),
+    mode: 'day', upgrades, players: Math.max(1, Math.min(E.MAX_PLAYERS, room.players.length)), rules: E.RULES,
   };
   Co.send({ t: 'start', spec });
   startCoopShift(spec);
@@ -648,6 +658,14 @@ function coopGo() {
 function startCoopShift(spec) {
   const room = Co.current();
   if (!room) return;
+  if (spec.rules !== E.RULES) {
+    // (two versions of the game would play two different shifts: the older one has to reload)
+    if (page !== 'coop') coopPage();
+    coopNote((spec.rules ?? 0) > E.RULES
+      ? 'Your friend has a newer version of Hawker Rush. Close and reopen the game to update, then join again.'
+      : 'Your friend’s Hawker Rush is out of date. Ask them to close and reopen it, then start again.', true);
+    return;
+  }
   closeDialog('results');
   closeDialog('paused');
   stopShift();
@@ -816,6 +834,8 @@ function achievementFacts(stars) {
     speed: run.mode === 'speed' && shift.served >= E.SPEED_CUSTOMERS, goals5: Object.keys(save.goalsDone).length >= 5,
     allDays: Array.from({ length: E.DAYS }, (_, i) => i + 1).every(d => (save.best[d] ?? 0) > 0),
     gift7: (save.gift?.streak ?? 0) >= 7, album: E.PEOPLE.every(p => (save.collection.people[p.id] ?? 0) > 0),
+    fever: (shift.fevers ?? 0) > 0, critic: (shift.reviews ?? 0) > 0,
+    family: Object.values(save.regulars).some(n => n >= 5), allRegulars: E.REGULARS.every(r => (save.regulars[r.id] ?? 0) > 0),
   };
 }
 
@@ -837,6 +857,11 @@ function settle(stars) {
     const amount = tiers.reduce((sum, t) => sum + t.tier.pay, 0);
     pay(amount);
     rows.push(['🍽 Dish mastery', tiers.map(t => `${E.DISHES[t.id].name} ${t.tier.name}`).join(', ') + ` +${money(amount)}`]);
+  }
+  const hearts = Object.entries(run.stats.regulars);
+  if (hearts.length) {
+    for (const [id, n] of hearts) save.regulars[id] = Math.min(REGULAR_HEARTS, (save.regulars[id] ?? 0) + n);
+    rows.push(['♥ Regulars', hearts.map(([id]) => `${regulars[id]?.name ?? id} ${save.regulars[id]}/${REGULAR_HEARTS}♥`).join(', ')]);
   }
   const stickers = news.filter(n => n.kind === 'sticker');
   if (stickers.length) rows.push(['⭐ New stickers', stickers.map(n => people[n.id] ?? n.id).join(', ')]);
@@ -1089,7 +1114,7 @@ function serveSeat(index) {
 }
 
 function renderSeats() {
-  run.seats.forEach(({ el, orders, portrait, patience }, index) => {
+  run.seats.forEach(({ el, orders, portrait, patience, tag }, index) => {
     const customer = shift.seats[index];
     const waiting = Boolean(customer && !customer.leaving);
     el.disabled = !waiting;
@@ -1108,19 +1133,26 @@ function renderSeats() {
       el.setAttribute('aria-label', `Seat ${index + 1} empty`);
       setContent(orders, '');
       setContent(portrait, '<span class="stool"></span>');
+      tag.hidden = true;
       patience.style.width = '0%';
       return;
     }
     const remaining = customer.left / customer.patience;
     const mood = customer.leaving === 'happy' ? 'eating' : customer.leaving || (remaining < .35 ? 'cross' : 'ok');
     const wanted = customer.order.filter((_, i) => !customer.got[i]).map(id => E.DISHES[id].name);
-    const was = `${people[customer.who]} · seat ${index + 1}`;
+    const was = `${nameOf_(customer)} · seat ${index + 1}`;
+    tag.hidden = !customer.kind;
+    if (customer.kind) {
+      setText(tag, customer.kind === 'critic' ? '📝 Critic' : customer.kind === 'group' ? '👥 Group'
+        : `♥ ${SHORT[customer.regular] ?? ''}`);
+      tag.dataset.kind = customer.kind;
+    }
     el.setAttribute('aria-label', `${was}: ${waiting ? wanted.join(', ') : customer.leaving === 'happy' ? 'served' : 'leaving'}`);
     setContent(orders, customer.order.map((id, i) => {
       const dish = E.DISHES[id];
       return `<span class="order${customer.got[i] ? ' done' : ''}">${dishArt(id)}<span>${dish.name}</span></span>`;
     }).join(''));
-    setContent(portrait, Art.person(customer.who, mood));
+    setContent(portrait, Art.customer(customer, mood));
     const mark = run.selected >= 0 ? E.dishOf(shift.prep[run.selected]) : null;
     el.classList.toggle('eligible', Boolean(waiting && mark && E.servingFor(shift, mark, index) === index));
     patience.style.width = `${Math.max(0, remaining) * 100}%`;
@@ -1299,7 +1331,12 @@ function render() {
   setContent($('cat'), Art.cat(catMood()));
   const wave = E.WAVES[shift.wave]?.[2];
   $('shift').classList.toggle('rush', wave === 'lunch' || wave === 'dinner');
-  F.musicRush(Math.max(shift.seats.filter(c => c && !c.leaving).length / shift.seats.length, run.mode !== 'speed' && time <= 10 ? 1 : 0));
+  const fever = shift.t < shift.feverUntil;
+  $('shift').classList.toggle('fever', fever);
+  $('feverChip').hidden = !fever;
+  if (fever) setText($('feverChip'), `🔥 ×2 · ${Math.ceil(shift.feverUntil - shift.t)}`);
+  $('feverChip').title = 'Fever: double tips';
+  F.musicRush(fever ? 1 : Math.max(shift.seats.filter(c => c && !c.leaving).length / shift.seats.length, run.mode !== 'speed' && time <= 10 ? 1 : 0));
 }
 
 function transient(text) {
@@ -1430,8 +1467,14 @@ function handleEvents() {
         const who = shift.seats[event.seat]?.who; // (still in the seat, enjoying it)
         if (who) run.stats.people[who] = (run.stats.people[who] ?? 0) + 1;
         if (event.perfect) run.stats.perfect++;
+        if (event.regular) run.stats.regulars[event.regular] = (run.stats.regulars[event.regular] ?? 0) + 1;
         F.sfx.paid(event.combo);
-        float('+' + money(event.amount), seat, 'good');
+        float('+' + money(event.amount) + (event.fever ? ' 🔥' : ''), seat, 'good');
+        if (event.review === 'great') {
+          banner('★★★★★ A glowing review!');
+          run.cheerUntil = shift.t + 3;
+        }
+        if (event.regular) window.setTimeout(() => float(`♥ ${regulars[event.regular]?.name ?? ''}`, seat, 'good'), 450);
         coins(seat, Math.ceil(event.amount));
         burst(seat, '♥', 7, 'heart');
         if (event.combo >= 3 || event.perfect) run.cheerUntil = shift.t + 1.6;
@@ -1439,9 +1482,16 @@ function handleEvents() {
         if ([5, 10, 15, 20].includes(event.combo)) banner(`Combo ×${event.combo}!`);
         break;
       }
+      case 'fever':
+        banner('🔥 FEVER! Double tips!');
+        F.sfx.start();
+        burst($('money'), '🔥', 8, 'spark');
+        break;
+      case 'fever-end': float('Fever over', $('money'), 'bad'); break;
       case 'angry':
         F.sfx.angry();
         float('Left!', seat, 'bad');
+        if (event.review === 'bad') banner(`📝 A bad review… −${money(event.fine)}`, 'bad');
         run.worryUntil = shift.t + 2.2;
         $('shift').classList.remove('shake');
         void $('shift').offsetWidth;
@@ -1872,6 +1922,12 @@ function collectionPage() {
     return `<li class="tier-${tier}"><span class="mastery-art">${dishArt(id)}</span><b>${E.DISHES[id].name}</b>` +
       `<small>${n} served${next ? ` · ${next.name} at ${next.at}` : ' · Gold!'}</small>` +
       `<span class="medal" aria-label="${tier ? MASTERY[tier - 1].name : 'No medal yet'}">${['', '🥉', '🥈', '🥇'][tier]}</span></li>`;
+  }).join('');
+  $('regularList').innerHTML = E.REGULARS.map(r => {
+    const n = save.regulars[r.id] ?? 0;
+    return `<li class="${n ? 'got' : ''}">` + (n ? Art.customer({ who: r.who, kind: 'regular' }, 'happy') : '<span class="unknown-face" aria-hidden="true">?</span>') +
+      `<b>${n ? r.name : '???'}</b><small>${n ? `Loves ${E.DISHES[r.fav].name}` : 'Not met yet'}</small>` +
+      `<span class="hearts" aria-label="${n} of ${REGULAR_HEARTS} hearts">${'♥'.repeat(n)}<i>${'♥'.repeat(REGULAR_HEARTS - n)}</i></span></li>`;
   }).join('');
   $('stickerList').innerHTML = E.PEOPLE.map(p => {
     const n = save.collection.people[p.id] ?? 0;
