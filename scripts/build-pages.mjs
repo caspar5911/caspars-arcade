@@ -15,6 +15,7 @@ const assetUrl = './assets/' + version;
 const manifest = JSON.stringify({ build }) + '\n';
 const statuses = { prototype: 'Playable prototype', playable: 'Playable', archived: 'Shelved prototype' };
 const versioned = new Map([
+  ['will-it-fit', { modules: '', meta: 'will-it-fit-build' }],
   ['rulereaper', { modules: 'src', meta: 'rulereaper-build' }],
   ['snap-ruler', { modules: '', meta: 'snap-ruler-build' }],
   ['ceiling-punch', { modules: '', meta: 'ceiling-punch-build' }], // (each release gets new file addresses: phones never keep an old copy)

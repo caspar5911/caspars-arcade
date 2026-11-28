@@ -2,6 +2,8 @@
 
 [Open the arcade](https://caspar5911.github.io/caspars-arcade/). GitHub Pages builds the hub and its games from this repository after tests pass on main.
 
+[Play Will It Fit?](https://caspar5911.github.io/caspars-arcade/games/will-it-fit/), a packing puzzle about finding room for one more thing. Rotate everyday objects into twelve increasingly awkward suitcases, then close the lid. A new daily bag gives everyone the same packing problem.
+
 [Play Ceiling Punch](https://caspar5911.github.io/caspars-arcade/games/ceiling-punch/), an endless one-tap climber: the robot never stops, so punch through cracks, risk gold double smashes, and stay ahead of the rising flood. [Implementation plan](docs/superpowers/plans/2026-11-27-ceiling-punch.md).
 
 [Play Hawker Rush](https://caspar5911.github.io/caspars-arcade/games/hawker-rush/), a cooking-and-serving game at a hawker stall. Build ten dishes ingredient by ingredient and serve before customers lose patience. Upgrade your stall through 15 campaign days, share a Daily Rush challenge, race to serve 15 customers in the weekly Speed Run, or run one stall live with up to three friends.

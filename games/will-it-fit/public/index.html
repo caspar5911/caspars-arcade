@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f4f2ea">
+  <meta name="will-it-fit-build" content="development">
+  <meta name="description" content="One tiny suitcase. A wildly optimistic packing list. Rotate, rearrange, and see if you can make it all fit.">
+  <title>Will It Fit? · Caspar’s Arcade</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="game">
+    <header>
+      <a href="../../" class="arcade">Caspar’s Arcade</a>
+      <button id="sound" class="icon" type="button" aria-label="Turn sound off">Sound on</button>
+    </header>
+    <div class="title-row">
+      <h1>Will it <em>fit?</em></h1>
+      <button id="levels" class="level-button" type="button">Bag 1 / 12</button>
+    </div>
+    <div class="trip-row">
+      <h2 id="trip">The weekend bag</h2>
+      <button id="daily" type="button" class="daily">Daily bag</button>
+    </div>
+    <div class="stage">
+      <canvas id="canvas" tabindex="0" role="application" aria-label="Packing board" aria-describedby="boardInstructions"></canvas>
+    </div>
+    <p id="boardInstructions" class="sr-only">Choose an item using the buttons after the status message. On the board, arrow keys move its top-left corner, R rotates, Enter packs, and Delete unpacks. Escape cancels selection. The table after the item buttons describes the current contents of each bag cell.</p>
+    <p id="status" role="status">Pick an item. Rotate it. Make a little room.</p>
+    <div id="itemButtons" class="item-buttons" aria-label="Choose an item to pack"></div>
+    <div class="sr-only"><table id="boardAccess"></table></div>
+    <div class="tools">
+      <button id="undo" type="button">Undo</button>
+      <button id="rotate" type="button">Rotate <kbd>R</kbd></button>
+      <button id="hint" type="button">A little help</button>
+      <button id="reset" type="button" aria-label="Empty the suitcase and start this bag again">Reset</button>
+    </div>
+    <button id="close" class="close-button" type="button">Close it <span id="count">0 / 3 packed</span></button>
+  </div>
+  <dialog id="win" aria-labelledby="winTitle">
+    <div class="win-art" aria-hidden="true">IT FITS.</div>
+    <h2 id="winTitle">Room for everything.</h2>
+    <p id="winDetail"></p>
+    <button id="next" class="close-button" type="button">Pack the next bag</button>
+    <button id="share" class="secondary" type="button">Share your packing</button>
+    <button id="again" class="text-button" type="button">Try this bag again</button>
+    <p id="shareStatus" role="status"></p>
+  </dialog>
+  <dialog id="levelPicker" aria-labelledby="pickerTitle">
+    <div class="dialog-heading"><h2 id="pickerTitle">Where next?</h2><button id="pickerClose" type="button" class="text-button">Done</button></div>
+    <p>Twelve little trips. One suitcase.</p>
+    <div id="levelGrid"></div>
+  </dialog>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
