@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="hawker-rush-build" content="development">
-  <meta name="theme-color" content="#241d15">
+  <meta name="theme-color" content="#fff3e4">
   <meta name="description" content="Run a hawker stall. Build kopi, kaya toast, chicken rice and satay, then serve customers before they lose patience.">
   <title>Hawker Rush · Caspar’s Arcade</title>
   <!-- installable: added to the home screen it opens full screen (and sideways) -->
@@ -15,9 +15,22 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Hawker Rush">
   <link rel="stylesheet" href="./style.css">
-  <script>try { const t = localStorage.getItem('hawker-rush-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap">
+  <!-- (the colour theme, set before the page first draws: bright Latte unless the player picked another) -->
+  <script>
+    (() => {
+      const themes = ['latte', 'pandan', 'ocean', 'sakura', 'lavender', 'classic'];
+      let t = 'latte';
+      try { t = { kopi: 'latte', night: 'lavender' }[localStorage.getItem('hawker-rush-theme')] ?? localStorage.getItem('hawker-rush-theme') ?? 'latte'; } catch {}
+      if (!themes.includes(t)) t = 'latte';
+      if (t !== 'classic') Object.assign(document.documentElement.dataset, { theme: t, tone: 'light' });
+    })();
+  </script>
 </head>
 <body>
+  <div id="ambience" class="ambience" aria-hidden="true"></div>
   <header class="hud">
     <a class="icon" id="back" href="../../" aria-label="All games" data-out="true">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>
@@ -49,11 +62,12 @@
     </div>
     <div class="theme-pick" role="group" aria-label="Colour theme">
       <span>Theme</span>
-      <button type="button" data-theme-pick="kopi" aria-label="Kopi" title="Kopi" aria-pressed="true" style="--sw-a:#372820;--sw-b:#ffcc6f"></button>
-      <button type="button" data-theme-pick="pandan" aria-label="Pandan" title="Pandan" aria-pressed="false" style="--sw-a:#1b3727;--sw-b:#6db88a"></button>
-      <button type="button" data-theme-pick="ocean" aria-label="Ocean" title="Ocean" aria-pressed="false" style="--sw-a:#172f47;--sw-b:#5da3c6"></button>
-      <button type="button" data-theme-pick="sakura" aria-label="Sakura" title="Sakura" aria-pressed="false" style="--sw-a:#3e2133;--sw-b:#e08cab"></button>
-      <button type="button" data-theme-pick="night" aria-label="Night market" title="Night market" aria-pressed="false" style="--sw-a:#221c45;--sw-b:#7a6cd0"></button>
+      <button type="button" data-theme-pick="latte" aria-label="Latte" title="Latte" aria-pressed="true" style="--sw-a:#ffe2c4;--sw-b:#ffe2c4"><span aria-hidden="true">☕</span></button>
+      <button type="button" data-theme-pick="pandan" aria-label="Pandan" title="Pandan" aria-pressed="false" style="--sw-a:#d8f2cc;--sw-b:#d8f2cc"><span aria-hidden="true">🍃</span></button>
+      <button type="button" data-theme-pick="ocean" aria-label="Ocean" title="Ocean" aria-pressed="false" style="--sw-a:#d4ecfc;--sw-b:#d4ecfc"><span aria-hidden="true">🫧</span></button>
+      <button type="button" data-theme-pick="sakura" aria-label="Sakura" title="Sakura" aria-pressed="false" style="--sw-a:#ffd6e6;--sw-b:#ffd6e6"><span aria-hidden="true">🌸</span></button>
+      <button type="button" data-theme-pick="lavender" aria-label="Lavender" title="Lavender" aria-pressed="false" style="--sw-a:#e6dcff;--sw-b:#e6dcff"><span aria-hidden="true">⭐</span></button>
+      <button type="button" data-theme-pick="classic" aria-label="Classic kopi (dark)" title="Classic kopi (dark)" aria-pressed="false" style="--sw-a:#4a3424;--sw-b:#4a3424"><span aria-hidden="true">🟤</span></button>
     </div>
     <button id="openCoop" class="tile coop-tile" type="button"><span aria-hidden="true" class="mode-icon">👫</span><span>Play with friends<small>Share one stall, live, on your phones</small></span></button>
     <div class="mode-grid">

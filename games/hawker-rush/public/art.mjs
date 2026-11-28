@@ -417,7 +417,15 @@ export function person(who, mood = 'ok') {
 
 // ---------------------------------------------------------------------------------------------------- Mochi, the stall cat
 /** The stall's cat (a round ginger-and-white cat). mood: 'idle' | 'sleep' | 'cheer' | 'worried'. */
-export function cat(mood = 'idle') {
+const CAT_WEAR = {
+  latte: '<g transform="translate(52 22)"><path d="M0 0 l-9 -6 v12 Z M0 0 l9 -6 v12 Z" fill="#ff6b6b" stroke="#c94a4a" stroke-width="1"/><circle r="3" fill="#ff8a8a" stroke="#c94a4a" stroke-width="1"/></g>',
+  pandan: '<g transform="translate(40 24)"><path d="M0 0 q-2 -10 4 -16" stroke="#4f8f58" stroke-width="2" fill="none"/><path d="M3 -15 q8 -6 12 2 q-7 4 -12 -2Z" fill="#7fcf8a"/><path d="M2 -10 q-8 -6 -12 1 q7 4 12 -1Z" fill="#9fdca8"/></g>',
+  ocean: '<g transform="translate(40 25)"><path d="M-14 0 q14 -14 28 0 Z" fill="#fff" stroke="#3a9ad8" stroke-width="1.6"/><rect x="-15" y="-2" width="30" height="5" rx="2" fill="#3a9ad8"/><circle cx="0" cy="-9" r="2.2" fill="#ff6b6b"/></g>',
+  sakura: '<g transform="translate(25 25)">' + [0, 72, 144, 216, 288].map(a => `<ellipse cx="0" cy="-5" rx="3.6" ry="5" fill="#ffb3cc" stroke="#ff8fb3" stroke-width=".8" transform="rotate(${a})"/>`).join('') + '<circle r="2.4" fill="#ffd86b"/></g>',
+  lavender: '<g transform="translate(55 24)"><path d="M0 -8 l2.4 5 l5.4 .6 l-4 3.6 l1.2 5.4 l-5 -3 l-5 3 l1.2 -5.4 l-4 -3.6 l5.4 -.6z" fill="#ffd86b" stroke="#e0a800" stroke-width=".8"/></g>',
+};
+
+export function cat(mood = 'idle', wear = '') {
   const eyes = {
     idle: '<g class="blink" style="transform-origin:40px 46px"><ellipse cx="32" cy="46" rx="3" ry="3.8" fill="#2b1a10"/><ellipse cx="48" cy="46" rx="3" ry="3.8" fill="#2b1a10"/><circle cx="31" cy="44.5" r="1.1" fill="#fff"/><circle cx="47" cy="44.5" r="1.1" fill="#fff"/></g>',
     sleep: '<path d="M28 47 q4 3 8 0 M44 47 q4 3 8 0" stroke="#2b1a10" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
@@ -443,15 +451,16 @@ export function cat(mood = 'idle') {
     '<path d="M38 49 l2 2 l2 -2 Z" fill="#ff7a9a"/>' +
     '<ellipse cx="27" cy="52" rx="4.5" ry="2.6" fill="#ff9aaa" opacity=".6"/><ellipse cx="53" cy="52" rx="4.5" ry="2.6" fill="#ff9aaa" opacity=".6"/>' +
     '<path d="M18 50 h-9 M18 54 l-8 3 M62 50 h9 M62 54 l8 3" stroke="#c9a080" stroke-width="1.2" stroke-linecap="round"/>' +
-    eyes + mouth + paws + zzz + sparkle + sweat, 'cat cat-' + mood);
+    eyes + mouth + paws + zzz + sparkle + sweat + (CAT_WEAR[wear] ?? ''), 'cat cat-' + mood);
 }
 
 // ---------------------------------------------------------------------------------------------------- the stall
 /** The stall's awning and front, with any decorations bought. */
 export function stallTop(decor = {}, w = 400) {
-  const stripes = Array.from({ length: Math.ceil(w / 40) }, (_, i) => `<path d="M${i * 40} 0 h40 v24 q-20 16 -40 0 Z" fill="${i % 2 ? '#fff6e6' : '#ff5a5f'}"/>`).join('') +
-    `<rect x="0" y="0" width="${w}" height="6" fill="#d8342a"/>` +
-    Array.from({ length: Math.ceil(w / 40) }, (_, i) => `<circle cx="${i * 40 + 20}" cy="33" r="2.4" fill="${i % 2 ? '#ffb0b5' : '#fff'}"/>`).join('');
+  // (the colours follow the theme: CSS variables, with the classic red and cream as the fallback)
+  const stripes = Array.from({ length: Math.ceil(w / 40) }, (_, i) => `<path d="M${i * 40} 0 h40 v24 q-20 16 -40 0 Z" style="fill:${i % 2 ? 'var(--awning-b, #fff6e6)' : 'var(--awning-a, #ff5a5f)'}"/>`).join('') +
+    `<rect x="0" y="0" width="${w}" height="6" style="fill:var(--awning-top, #d8342a)"/>` +
+    Array.from({ length: Math.ceil(w / 40) }, (_, i) => `<circle cx="${i * 40 + 20}" cy="33" r="2.4" style="fill:${i % 2 ? 'var(--awning-a, #ffb0b5)' : '#fff'}"/>`).join('');
   const lanterns = decor.lanterns ? [44, w - 44].map((x, k) => `<g class="sway" style="transform-origin:${x}px 26px;animation-delay:-${k}s"><line x1="${x}" y1="26" x2="${x}" y2="40" stroke="#5a2c0e" stroke-width="2"/><ellipse cx="${x}" cy="54" rx="13" ry="15" fill="#ff4a4a" stroke="#b81c1c" stroke-width="2"/><path d="M${x - 13} 54 h26 M${x} 39 v30" stroke="#ffd23f" stroke-width="1.2" opacity=".7"/><rect x="${x - 7}" y="38" width="14" height="4" rx="1" fill="#ffd23f"/><rect x="${x - 7}" y="67" width="14" height="4" rx="1" fill="#ffd23f"/><path d="M${x} 71 v8" stroke="#ffd23f" stroke-width="2"/></g>`).join('') : '';
   const sign = decor.sign ? `<g><rect x="${w / 2 - 92}" y="34" width="184" height="30" rx="10" fill="#4a2a1a" stroke="#ffd23f" stroke-width="3"/><text x="${w / 2}" y="55" text-anchor="middle" font-size="16" font-weight="900" fill="#ffd23f" font-family="system-ui">HAWKER RUSH</text></g>` : '';
   const neon = decor.neon ? `<text x="${w / 2}" y="84" text-anchor="middle" font-size="15" font-weight="900" fill="#ff5ad6" stroke="#ffd6f6" stroke-width=".6" font-family="system-ui" class="neon">★ OPEN ★</text>` : '';
