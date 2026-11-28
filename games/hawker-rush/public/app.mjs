@@ -9,6 +9,7 @@ import { teamPay, teamBonus } from './rewards.mjs';
 import { bonusGoal, goalProgress } from './goals.mjs';
 import { ACHIEVEMENTS, MASTERY, REGULAR_HEARTS, STICKER_GOLD, collect, masteryOf, newAchievements } from './collection.mjs';
 import { GIFTS, claimGift, localDay } from './gift.mjs';
+import { sendStat, setStats, statsOn } from './stats.mjs';
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'hawker-rush-save';
@@ -25,6 +26,17 @@ const cents = value => Math.round(value * 100);
 const money = value => '$' + (value % 1 ? value.toFixed(2) : value.toFixed(0));
 const duration = value => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
 const scoreText = (mode, value) => mode === 'speed' ? `${(value / 100).toFixed(2)} s` : money(value / 100);
+// 💡 first-time tips: each new thing is explained the first time it happens (once per phone)
+const TIPS = {
+  fever: { icon: '🔥', title: 'Fever time!', text: 'You served 5 in a row: tips are doubled for 8 seconds. Keep going! If someone storms off, Fever ends.' },
+  critic: { icon: '📝', title: 'A food critic!', text: 'Critics are less patient. Serve them quickly for a glowing review (worth the dishes again). If they storm off, you lose $5.' },
+  group: { icon: '👥', title: 'A big group', text: 'They order three dishes at once, wait a bit longer, and tip big.' },
+  regular: { icon: '♥', title: 'A regular!', text: 'Regulars always order their favourite. Every visit you serve fills a heart: see them on the Collection page.' },
+  cookdish: { icon: '🔥', title: 'Cook it whole', text: 'This dish is built first, then cooked: tap it to send it to the wok or the griddle, then tap the cooker to take it out when it’s done.' },
+  flip: { icon: '🫓', title: 'Flip it!', text: 'Prata needs flipping halfway. When the griddle says Flip!, tap it, or it burns.' },
+  burnt: { icon: '💨', title: 'Burnt!', text: 'Food left on the fire too long burns. Tap the cooker to bin it, and keep an eye on the timers.' },
+};
+
 const starsText = count => '★'.repeat(count) + '☆'.repeat(3 - count);
 
 function boundedInt(value, min, max, fallback = min) {
@@ -68,6 +80,8 @@ function loadSave() {
   const collection = { dishes: counts(raw?.collection?.dishes), people: counts(raw?.collection?.people) };
   const achievements = {};
   for (const a of ACHIEVEMENTS) if (raw?.achievements?.[a.id] === true) achievements[a.id] = true;
+  const seen = {};
+  for (const id of Object.keys(TIPS)) if (raw?.seen?.[id] === true) seen[id] = true;
   const regularHearts = {};
   for (const r of E.REGULARS) {
     const n = boundedInt(raw?.regulars?.[r.id], 0, REGULAR_HEARTS);
@@ -78,7 +92,7 @@ function loadSave() {
   const gift = /^\d{4}-\d{2}-\d{2}$/.test(raw?.gift?.last ?? '')
     ? { last: raw.gift.last, streak: boundedInt(raw.gift.streak, 1, 100000, 1) } : null;
   return {
-    version: 2, day, best, upgrades, decor, records, collection, achievements, goalsDone, gift, regulars: regularHearts,
+    version: 2, day, best, upgrades, decor, records, collection, achievements, goalsDone, gift, regulars: regularHearts, seen,
     wallet: Number.isFinite(raw?.wallet) && raw.wallet > 0 ? raw.wallet : 0,
     guided: raw?.guided === true || day > 1,
     nickname: typeof raw?.nickname === 'string' ? raw.nickname.slice(0, 16) : '',
@@ -209,6 +223,7 @@ function activeKey(mode) {
 }
 
 function home({ focus = true } = {}) {
+  if (run && shift?.phase === 'running' && page === 'shift') shiftStat(true); // (left part-way)
   if (Co.current()) {
     stopListening?.();
     Co.leave();
@@ -824,6 +839,17 @@ function showEmote(seat, e) {
   sayTimer = setTimeout(() => say.classList.remove('show'), 2600);
 }
 
+/** 📊 One shift, for the anonymous stats (finished, or quit part-way). */
+function shiftStat(quit = false) {
+  if (!run || !shift) return;
+  sendStat({
+    event: 'shift', mode: run.coop ? 'coop' : run.mode, level: Math.max(1, Math.min(99999, run.day ?? E.DAYS)),
+    stars: run.mode === 'speed' ? 0 : E.starsFor(shift.coins, shift.goal), served: Math.min(500, shift.served),
+    lost: Math.min(500, shift.lost + shift.passed), seconds: Math.min(3600, Math.round(shift.t)), quit,
+    players: shift.players ?? 1, theme,
+  });
+}
+
 /** What's true after this shift, for the achievements. */
 function achievementFacts(stars) {
   const total = save.totals.served;
@@ -895,6 +921,7 @@ function finishCoop() {
   save.totals.served += shift.served;
   save.totals.shifts++;
   const rewards = settle(stars);
+  shiftStat();
   persist();
   result = { coop: true, mode: 'day', title: run.title, day: run.day };
   F.sfx.stars(stars);
@@ -1003,7 +1030,7 @@ async function goFullscreen() {
 
 function playing() {
   if (run?.coop?.role === 'guest') return Boolean(shift?.phase === 'running' && !document.hidden); // (the host keeps time)
-  return run && shift?.phase === 'running' && !needsTurning() && !$('paused').open && !$('recipes').open && !document.hidden;
+  return run && shift?.phase === 'running' && !needsTurning() && !$('paused').open && !$('recipes').open && !$('tipCard').open && !document.hidden;
 }
 
 function tutorialWaiting() {
@@ -1411,6 +1438,32 @@ function burst(anchor, char, n, kind) {
   }
 }
 
+const tipQueue = [];
+/** The first time something new happens: explain it (solo: the shift waits; co-op: a quick note, the host keeps time). */
+function teach(id) {
+  if (!TIPS[id] || save.seen[id] || !run) return;
+  save.seen[id] = true;
+  persist();
+  if (run.coop) {
+    banner(`${TIPS[id].icon} ${TIPS[id].title}`);
+    transient(TIPS[id].text);
+    return;
+  }
+  tipQueue.push(id);
+  showTip();
+}
+function showTip() {
+  if ($('tipCard').open || !tipQueue.length || !run || page !== 'shift') return;
+  if ($('paused').open || $('recipes').open || $('results').open) return; // (after those close)
+  const tip = TIPS[tipQueue.shift()];
+  clearDrag();
+  F.musicPause(true);
+  setText($('tipIcon'), tip.icon);
+  setText($('tipTitle'), tip.title);
+  setText($('tipText'), tip.text);
+  openDialog('tipCard');
+}
+
 function banner(text, tone = '') {
   const b = document.createElement('div');
   b.className = 'banner ' + tone;
@@ -1425,9 +1478,12 @@ function handleEvents() {
     const station = run.stations.find(view => view.id === event.station)?.el;
     const spot = run.prep[event.spot]?.wrap;
     switch (event.type) {
-      case 'arrive':
+      case 'arrive': {
         F.sfx.arrive();
+        const c = shift.seats[event.seat];
+        if (c?.kind) teach(c.kind);
         break;
+      }
       case 'wave': {
         const text = { lunch: 'Lunch rush!', breather: 'Phew… a breather', dinner: 'Dinner rush!', closing: 'Last orders!' }[event.wave];
         if (text) banner(text, event.wave === 'breather' ? '' : 'bad');
@@ -1439,9 +1495,13 @@ function handleEvents() {
         banner(`Closed early! +${money(event.amount)}`);
         run.cheerUntil = shift.t + 3;
         break;
-      case 'base': F.sfx.base(); break;
+      case 'base':
+        F.sfx.base();
+        if (E.readyToCook(shift.prep[event.spot])) teach('cookdish');
+        break;
       case 'add':
         F.sfx.add(E.INGREDIENTS[event.ingredient]?.base === 'cup' && event.ingredient !== 'ice');
+        if (E.readyToCook(shift.prep[event.spot])) teach('cookdish');
         if (event.dish) {
           float(E.DISHES[event.dish].name + ' ✓', spot, 'good');
           burst(spot, '✦', 6, 'spark');
@@ -1452,7 +1512,7 @@ function handleEvents() {
         F.sfx.cook();
         fly(run.prep[event.spot]?.wrap, station, dishArt(event.dish, { cooked: false }).replace(/<svg/, '<svg style="opacity:.95"'));
         break;
-      case 'flip-me': F.sfx.ready(); float('Flip!', station, 'bad'); break;
+      case 'flip-me': F.sfx.ready(); float('Flip!', station, 'bad'); teach('flip'); break;
       case 'flip': F.sfx.base(); float('Flipped!', station, 'good'); break;
       case 'take':
         F.sfx.base();
@@ -1471,10 +1531,14 @@ function handleEvents() {
         F.sfx.paid(event.combo);
         float('+' + money(event.amount) + (event.fever ? ' 🔥' : ''), seat, 'good');
         if (event.review === 'great') {
+          F.sfx.review();
           banner('★★★★★ A glowing review!');
           run.cheerUntil = shift.t + 3;
         }
-        if (event.regular) window.setTimeout(() => float(`♥ ${regulars[event.regular]?.name ?? ''}`, seat, 'good'), 450);
+        if (event.regular) {
+          F.sfx.regular();
+          window.setTimeout(() => float(`♥ ${regulars[event.regular]?.name ?? ''}`, seat, 'good'), 450);
+        }
         coins(seat, Math.ceil(event.amount));
         burst(seat, '♥', 7, 'heart');
         if (event.combo >= 3 || event.perfect) run.cheerUntil = shift.t + 1.6;
@@ -1484,7 +1548,8 @@ function handleEvents() {
       }
       case 'fever':
         banner('🔥 FEVER! Double tips!');
-        F.sfx.start();
+        F.sfx.fever();
+        teach('fever');
         burst($('money'), '🔥', 8, 'spark');
         break;
       case 'fever-end': float('Fever over', $('money'), 'bad'); break;
@@ -1497,7 +1562,7 @@ function handleEvents() {
         void $('shift').offsetWidth;
         $('shift').classList.add('shake');
         break;
-      case 'burnt': F.sfx.burnt(); float('Burnt!', station, 'bad'); run.worryUntil = shift.t + 1.5; break;
+      case 'burnt': F.sfx.burnt(); float('Burnt!', station, 'bad'); run.worryUntil = shift.t + 1.5; teach('burnt'); break;
       case 'bin-burnt': F.sfx.trash(); float('Binned', station, 'bad'); break;
       case 'bin-dish': F.sfx.trash(); float('Binned', spot, 'bad'); break;
       case 'counter-full': F.sfx.nope(); transient('Pick an empty prep spot first.'); break;
@@ -1627,6 +1692,7 @@ function finish() {
   }
   result.rewards = settle(stars);
   persist();
+  shiftStat();
   F.sfx.stars(run.mode === 'speed' ? (shift.served === E.SPEED_CUSTOMERS ? 3 : 0) : stars);
   renderResults();
   openDialog('results');
@@ -1873,7 +1939,29 @@ $('recipes').addEventListener('close', () => {
 });
 $('paused').addEventListener('close', () => {
   if (!$('recipes').open) F.musicPause(false);
+  showTip();
 });
+$('tipOk').addEventListener('click', () => closeDialog('tipCard'));
+$('tipCard').addEventListener('close', () => {
+  if (tipQueue.length) showTip();
+  else if (!$('paused').open && !$('recipes').open && page === 'shift') F.musicPause(false);
+});
+$('resetTips').addEventListener('click', () => {
+  save.seen = {};
+  persist();
+  $('resetTips').textContent = 'Done: you’ll see them again';
+});
+// 📳 the phone's buzz, on or off
+function showBuzz() {
+  for (const b of document.querySelectorAll('[data-buzz]')) b.setAttribute('aria-pressed', String((b.dataset.buzz === 'on') === F.isBuzzOn()));
+}
+for (const b of document.querySelectorAll('[data-buzz]')) b.addEventListener('click', () => { F.setBuzz(b.dataset.buzz === 'on'); showBuzz(); });
+showBuzz();
+function showStats() {
+  for (const b of document.querySelectorAll('[data-stats]')) b.setAttribute('aria-pressed', String((b.dataset.stats === 'on') === statsOn()));
+}
+for (const b of document.querySelectorAll('[data-stats]')) b.addEventListener('click', () => { setStats(b.dataset.stats === 'on'); showStats(); });
+showStats();
 $('results').addEventListener('cancel', event => {
   event.preventDefault();
   home();
@@ -2030,6 +2118,7 @@ function setTheme(pick, remember = true) {
     delete root.dataset.tone;
   } else Object.assign(root.dataset, { theme, tone: 'light' });
   for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === theme));
+  F.setMusicStyle(theme); // (each theme has its own tune)
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--ground').trim());
   // the drifting things behind the menus: a dozen, each with its own place, size and pace
   const sky = $('ambience');
@@ -2084,6 +2173,7 @@ for (const b of $('team').querySelectorAll('[data-emote]')) {
 const challenge = parseChallenge(location.href);
 // (a newer release reloads itself in, but only from the home page with no co-op stall open)
 const applyUpdate = keepUpdated(() => page === 'home' && !Co.current() && !document.querySelector('dialog[open]'));
+sendStat({ event: 'open', level: Math.max(1, Math.min(99999, save.day)), theme }); // 📊 (anonymous; see stats.mjs)
 const roomLink = new URL(location.href).searchParams.get('room');
 if (challenge) prepare(challenge.mode, challenge.spec.day, challenge);
 else if (roomLink && /^[A-Za-z0-9]{5}$/.test(roomLink)) coopPage(roomLink.toUpperCase());

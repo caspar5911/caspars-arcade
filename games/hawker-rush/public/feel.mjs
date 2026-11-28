@@ -51,7 +51,28 @@ function ready() {
   return audio && master && audio.state === 'running';
 }
 
+// 📳 the phone's buzz (Android; iPhones don't vibrate for web pages): on unless the player switches it off
+const buzzKey = 'hawker-rush-buzz';
+let buzzOn = (() => {
+  try {
+    return localStorage.getItem(buzzKey) !== 'off';
+  } catch {
+    return true;
+  }
+})();
+export const isBuzzOn = () => buzzOn;
+export function setBuzz(on) {
+  buzzOn = Boolean(on);
+  try {
+    localStorage.setItem(buzzKey, buzzOn ? 'on' : 'off');
+  } catch {
+    // (just for this visit)
+  }
+  if (buzzOn) buzz(30);
+}
+
 function buzz(pattern) {
+  if (!buzzOn) return;
   try {
     if (navigator.vibrate) navigator.vibrate(pattern);
   } catch {
@@ -134,21 +155,44 @@ export const sfx = {
     if (!ready()) return;
     [523, 659, 784, 1047].slice(0, n + 1).forEach((f, i) => tone('triangle', f, f, .3, .16, .3 + i * .16));
   },
+  fever() { buzz([30, 40, 30, 40, 80]); if (ready()) [988, 1175, 1319, 1568].forEach((f, i) => tone('square', f, f, .12, .1, i * .06)); },
+  review() { buzz([20, 30, 20, 30, 120]); if (ready()) [1319, 1568, 2093].forEach((f, i) => tone('triangle', f, f, .3, .14, i * .1)); },
+  regular() { buzz([15, 40, 15]); if (ready()) { tone('sine', 1568, 1568, .2, .1); tone('sine', 2093, 2093, .3, .08, .12); } },
   buy() { buzz(20); if (ready()) { tone('square', 1318, 1318, .07, .08); tone('square', 1976, 1976, .2, .08, .06); } },
 };
 
 // ---------------------------------------------------------------------------------------------------- music
 // A cheerful, bouncy hawker-centre groove (C major: C, A minor, F, G). `rush` (0..1) speeds it up and adds
 // a busier hi-hat and a higher melody, for a full counter or the last seconds. In the phone speaker's range.
-const BASS = [48, 45, 41, 43]; // C3, A2, F2, G2
-const CHORDS = [[60, 64, 67, 72], [57, 60, 64, 69], [53, 57, 60, 65], [55, 59, 62, 67]];
-const TUNE = [0, 2, 1, 3, 2, 1, 0, 2];
+// Each theme has its own tune: a chord loop, a tempo, a voice and a melody shape (Classic and Latte: the original).
+const STYLES = {
+  latte: { bass: [48, 45, 41, 43], chords: [[60, 64, 67, 72], [57, 60, 64, 69], [53, 57, 60, 65], [55, 59, 62, 67]],
+    tune: [0, 2, 1, 3, 2, 1, 0, 2], bpm: 112, voice: 'square', bright: 2600, ring: .7, level: .13 },
+  // pandan: a mellow marimba in F (F, Dm, Bb, C)
+  pandan: { bass: [41, 38, 46, 48], chords: [[65, 69, 72, 77], [62, 65, 69, 74], [58, 62, 65, 70], [60, 64, 67, 72]],
+    tune: [0, 1, 2, 1, 3, 2, 1, 0], bpm: 104, voice: 'sine', bright: 3200, ring: .55, level: .2 },
+  // ocean: gentle bells over a slow wave, D major pentatonic
+  ocean: { bass: [50, 47, 43, 45], chords: [[62, 66, 69, 74], [59, 62, 66, 71], [55, 59, 62, 67], [57, 61, 64, 69]],
+    tune: [0, 2, 3, 2, 1, 3, 2, 0], bpm: 92, voice: 'triangle', bright: 4200, ring: 1.6, level: .14 },
+  // sakura: a plucky koto-like tune in G (G, Em, C, D)
+  sakura: { bass: [43, 40, 48, 50], chords: [[67, 71, 74, 79], [64, 67, 71, 76], [60, 64, 67, 72], [62, 66, 69, 74]],
+    tune: [3, 2, 0, 1, 2, 3, 1, 2], bpm: 108, voice: 'triangle', bright: 3600, ring: .45, level: .16 },
+  // lavender: a dreamy music box in A minor (Am, F, C, G)
+  lavender: { bass: [45, 41, 48, 43], chords: [[69, 72, 76, 81], [65, 69, 72, 77], [60, 64, 67, 72], [67, 71, 74, 79]],
+    tune: [0, 1, 2, 3, 2, 1, 2, 3], bpm: 96, voice: 'sine', bright: 5000, ring: 1.1, level: .17 },
+};
+STYLES.classic = STYLES.latte;
+let style = STYLES.latte;
+export function setMusicStyle(name) {
+  style = STYLES[name] ?? STYLES.latte;
+}
 const hz = m => 440 * 2 ** ((m - 69) / 12);
 let music = null;
 
 function musicStep(step, rush) {
   const { bus, nextTime: t } = music;
-  const bpm = 112 + 30 * rush;
+  const { bass: BASS, chords: CHORDS, tune: TUNE } = style;
+  const bpm = style.bpm + 30 * rush;
   const eighth = 60 / bpm / 2;
   const bar = Math.floor(step / 8) % 4, s = step % 8;
   // bouncy bass: root on the beat, the octave on the off-beat
@@ -167,19 +211,19 @@ function musicStep(step, rush) {
   // the melody: a plucky chord arpeggio, an octave up in a rush
   const note = CHORDS[bar][TUNE[s]] + (rush > .6 ? 12 : 0);
   const p = audio.createOscillator();
-  p.type = 'square';
+  p.type = style.voice;
   p.frequency.setValueAtTime(hz(note), t);
   const f = audio.createBiquadFilter();
   f.type = 'lowpass';
-  f.frequency.setValueAtTime(2600, t);
+  f.frequency.setValueAtTime(style.bright, t);
   f.frequency.exponentialRampToValueAtTime(700, t + eighth * .8);
   const pg = audio.createGain();
   pg.gain.setValueAtTime(.0001, t);
-  pg.gain.exponentialRampToValueAtTime(.13, t + .006);
-  pg.gain.exponentialRampToValueAtTime(.0001, t + eighth * .7);
+  pg.gain.exponentialRampToValueAtTime(style.level, t + .006);
+  pg.gain.exponentialRampToValueAtTime(.0001, t + eighth * style.ring);
   p.connect(f).connect(pg).connect(bus);
   p.start(t);
-  p.stop(t + eighth);
+  p.stop(t + eighth * Math.max(1, style.ring));
   // a light clap on 2 and 4, hi-hats (busier in a rush)
   if (s === 2 || s === 6) hiss('bandpass', 1500, 1200, .09, .22, t - audio.currentTime, bus);
   if (s % 2 === 1 || rush > .4) hiss('highpass', 8000, 7000, .04, .07 + .05 * rush, t - audio.currentTime, bus);
