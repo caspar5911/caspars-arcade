@@ -823,7 +823,16 @@ body.in-shift .hud-sub { display: none; }
 }
 
 /* held upright during a shift: ask for sideways (it can be waved away) */
-#rotate { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; padding: 24px; background: #1b120ef2; text-align: center; }
+#rotate, #turnUp { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; padding: 24px; background: #1b120ef2; text-align: center; }
+#turnUp .phone { display: inline-block; font-size: 3.4rem; animation: turnup 1.8s ease-in-out infinite; }
+@keyframes turnup { 0%, 30% { transform: rotate(-90deg); } 60%, 100% { transform: rotate(0); } }
+#turnUp p { margin: 12px 0; font-weight: 800; font-size: 1.1rem; }
+#turnUp small { display: block; color: var(--muted); margin-bottom: 14px; }
+#turnUp .ghost, #rotate .ghost { max-width: 320px; margin-inline: auto; }
+/* the menus on a phone held sideways (where the game can't hold it upright itself) */
+@media (orientation: landscape) and (pointer: coarse) and (max-height: 540px) {
+  body:not(.in-shift):not(.menus-sideways) #turnUp { display: grid; }
+}
 #rotate .phone { display: inline-block; font-size: 3.4rem; animation: turn 1.8s ease-in-out infinite; }
 @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
 #rotate p { margin: 12px 0; font-weight: 800; font-size: 1.1rem; }
