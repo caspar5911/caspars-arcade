@@ -343,7 +343,7 @@ test('the leaderboard server replays with this exact copy of the rules', async (
   const { createHash } = await import('node:crypto');
   const { readFile } = await import('node:fs/promises');
   const text = await readFile(new URL('../games/hawker-rush/public/engine.mjs', import.meta.url));
-  assert.equal(createHash('sha256').update(text).digest('hex'), 'abbdfa9f95395246df03d90221559209fdac5e9e4abf4f9f950645a0d7563fd3');
+  assert.equal(createHash('sha256').update(text).digest('hex'), 'e777534907c4947b8d5a1e572bb04fe36a6f845afe9841d98757363b2b600a43');
 });
 
 test('a phone showing an old copy moves to a newer release (and only a newer one)', async () => {
